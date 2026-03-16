@@ -10,40 +10,53 @@
 
   <!-- ─── NAV ─── -->
   <nav id="nav">
-    <div class="nav-logo" id="nav-logo-link" style="cursor:pointer">
-      Vision<span>Track</span>
+    <div class="nav-logo" id="nav-logo-link">Vision<span>Track</span></div>
+
+    <div class="nav-links">
+      <button class="nav-link active" data-page="dashboard">Dashboard</button>
+      <button class="nav-link" data-page="progress">Progress</button>
+      <button class="nav-link" data-page="settings">Settings</button>
     </div>
 
     <div class="nav-timer">
       <div class="label">Session</div>
       <div id="nav-time-display">10:00</div>
+      <button id="nav-pause-btn" title="Pause/Resume">⏸</button>
     </div>
 
     <div class="nav-right">
-      <span class="nav-user">Logged in as <strong id="nav-username"></strong></span>
+      <span class="nav-user">Hi, <strong id="nav-username"></strong></span>
       <button class="btn-logout" id="nav-logout">Sign out</button>
     </div>
   </nav>
 
-  <!-- ─── SESSION OVER OVERLAY ─── -->
+  <!-- ─── PAUSED OVERLAY ─── -->
+  <div id="paused-overlay">
+    <div class="paused-box">
+      <h2>⏸ Paused</h2>
+      <p>Your session timer is paused.<br>Resume when you're ready.</p>
+      <button class="btn-primary" id="paused-resume-btn">▶ Resume Session</button>
+    </div>
+  </div>
+
+  <!-- ─── SESSION OVER ─── -->
   <div id="session-over">
     <div class="session-over-box">
       <h1>Session Complete 🏑</h1>
-      <p>You've hit your 10-minute daily limit. Great work today — consistency builds elite vision. Come back tomorrow for your next session.</p>
+      <p>You've hit your 10-minute daily limit. Great work — consistency builds elite vision. Come back tomorrow!</p>
       <button class="btn-primary" id="session-over-close">See Today's Results</button>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- PAGE: LOGIN -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ─── UNLOCK TOAST ─── -->
+  <div class="unlock-toast" id="unlock-toast"></div>
+
+  <!-- ═══════════════════════════════ PAGE: LOGIN ═══════════════════════════════ -->
   <div class="page" id="page-login">
     <div class="login-box">
       <div class="login-logo">Vision<span>Track</span></div>
       <div class="login-sub">Field Hockey · Visual Training</div>
-
       <div id="login-error" class="login-error"></div>
-
       <form id="login-form-el">
         <div class="form-group">
           <label for="login-username">Username</label>
@@ -53,31 +66,23 @@
           <label for="login-password">Password</label>
           <input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••" required />
         </div>
-        <button class="btn-primary" type="submit" id="login-submit">
-          <span id="login-title">Sign In</span>
-        </button>
+        <button class="btn-primary" type="submit" id="login-submit"><span id="login-title">Sign In</span></button>
       </form>
-
       <div class="login-toggle">
-        <span id="login-toggle-text">
-          New here? <a id="login-toggle-link">Create an account</a>
-        </span>
+        <span id="login-toggle-text">New here? <a id="login-toggle-link">Create an account</a></span>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- PAGE: DASHBOARD -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════ PAGE: DASHBOARD ═══════════════════════════════ -->
   <div class="page" id="page-dashboard">
-    <div id="page-dashboard-inner" style="max-width:900px;width:100%;margin:0 auto;padding:5.5rem 2rem 3rem;">
+    <div class="inner-page">
 
       <div class="dash-header">
         <div class="dash-greeting">Good training, <span id="dash-name"></span></div>
         <div class="dash-date" id="dash-date"></div>
       </div>
 
-      <!-- Stats row -->
       <div class="dash-stats">
         <div class="stat-card">
           <div class="stat-label">Today's Training</div>
@@ -96,34 +101,22 @@
         </div>
       </div>
 
-<!-- Daily progress -->
       <div class="section-title">Daily Progress</div>
       <div class="progress-bar-wrap">
-        <div class="progress-track">
-          <div class="progress-fill" id="session-progress"></div>
-        </div>
+        <div class="progress-track"><div class="progress-fill" id="session-progress"></div></div>
         <div class="progress-label">
           <span id="progress-used">0m 0s used</span>
           <span id="progress-left">10m 0s left today</span>
         </div>
       </div>
 
-      <!-- Exercises -->
-      <div class="section-title" style="margin-top:2rem;">Exercises</div>
+      <div class="section-title" style="margin-top:2rem">Exercises</div>
       <div class="exercise-grid" id="exercise-grid"></div>
 
-      <!-- History -->
-      <div class="section-title" style="margin-top:1.5rem;">Recent Sessions</div>
+      <div class="section-title" style="margin-top:1.5rem">Recent Sessions</div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:2rem;">
         <table class="history-table">
-          <thead>
-            <tr>
-              <th>Date & Time</th>
-              <th>Exercise</th>
-              <th>Score</th>
-              <th>Detail</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Date & Time</th><th>Exercise</th><th>Score</th><th>Detail</th></tr></thead>
           <tbody id="history-tbody"></tbody>
         </table>
       </div>
@@ -131,20 +124,89 @@
     </div>
   </div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- PAGE: EXERCISE -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════ PAGE: EXERCISE ═══════════════════════════════ -->
   <div class="page" id="page-exercise">
     <div class="exercise-container">
       <div class="ex-page-header">
         <div class="ex-page-title" id="ex-page-title">Exercise</div>
-        <button class="btn-back" onclick="goToDashboard()">← Back</button>
+        <div class="ex-page-meta">
+          <button class="btn-back" onclick="goToDashboard()">← Back</button>
+        </div>
+      </div>
+      <div class="game-arena" id="game-arena"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ PAGE: PROGRESS ═══════════════════════════════ -->
+  <div class="page" id="page-progress">
+    <div class="inner-page">
+
+      <div class="dash-header">
+        <div class="dash-greeting">Your <span>Progress</span></div>
+        <div class="dash-date">Track your improvement over time</div>
       </div>
 
-      <div class="game-arena" id="game-arena">
-        <!-- Game content injected here -->
+      <div class="ex-filter" id="progress-filter"></div>
+
+      <div class="chart-grid">
+        <div class="chart-card wide">
+          <div class="chart-title">Score Over Time</div>
+          <div id="chart-scores"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Reaction Time Trend (Arrow Reaction)</div>
+          <div id="chart-reaction"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Daily Training Minutes — Last 14 Days</div>
+          <div id="chart-daily"></div>
+        </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ PAGE: SETTINGS ═══════════════════════════════ -->
+  <div class="page" id="page-settings">
+    <div class="inner-page">
+
+      <div class="dash-header">
+        <div class="dash-greeting">⚙️ <span>Settings</span></div>
+        <div class="dash-date">Manage your account and training data</div>
+      </div>
+
+      <div class="settings-grid">
+
+        <div class="settings-card">
+          <h3>Account</h3>
+          <div class="settings-row"><label>Username</label><span class="val" id="set-username">—</span></div>
+          <div class="settings-row"><label>Member since</label><span class="val" id="set-since">—</span></div>
+          <div class="settings-row"><label>Total sessions</label><span class="val" id="set-sessions">—</span></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Difficulty Progress</h3>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:1rem">Complete exercises at high scores to unlock harder difficulties.</p>
+          <div id="set-diff-progress"></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Unlock Requirements</h3>
+          <div class="settings-row"><label>👁️ Peripheral Flash → Medium</label><span class="val">16 / 20</span></div>
+          <div class="settings-row"><label>👁️ Peripheral Flash → Hard</label><span class="val">20 / 25</span></div>
+          <div class="settings-row"><label>🎯 Arrow Reaction → Medium</label><span class="val">Score 80+</span></div>
+          <div class="settings-row"><label>🎯 Arrow Reaction → Hard</label><span class="val">Score 130+</span></div>
+          <div class="settings-row"><label>🔢 Number Scatter → Medium</label><span class="val">Score 180+</span></div>
+          <div class="settings-row"><label>🔢 Number Scatter → Hard</label><span class="val">Score 150+</span></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Data</h3>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:1rem">Your data is stored locally in this browser only. Clearing browser data will erase it.</p>
+          <button class="btn-danger" id="set-reset-btn">⚠ Reset All Training Data</button>
+        </div>
+
+      </div>
     </div>
   </div>
 
