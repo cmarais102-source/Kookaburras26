@@ -200,4 +200,161 @@ const GameReactionTap = {
     const y = size/2 + Math.random() * (fh - size);
 
     const points = Math.round(10 + (76 - size) * 0.5);
-    const hue = size > 65 ? '#00e676​​​​​​​​​​​​​​​​
+    const hue = size > 65 ? '#00e676' : size > 55 ? '#ffeb3b' : '#ff6b35';
+
+    const target = document.createElement('div');
+    target.className = 'rt-target';
+    target.style.left = x + 'px';
+    target.style.top = y + 'px';
+    target.style.width = size + 'px';
+    target.style.height = size + 'px';
+    target.style.background = hue;
+    target.style.fontSize = Math.round(size * 0.35) + 'px';
+    target.innerHTML = `${points}<div class="rt-shrink-bar" id="rt-shrink"></div>`;
+    this.field.appendChild(target);
+    this.targetEl = target;
+    this.targetStart = Date.now();
+
+    const bar = document.getElementById('rt-shrink');
+    bar.style.transition = `width ${this.SHRINK_TIME}ms linear`;
+    requestAnimationFrame(() => { bar.style.width = '0%'; });
+
+    target.addEventListener('click', () => {
+      const rt = Date.now() - this.targetStart;
+      this.reactionTimes.push(rt);
+      const pts = Math.max(1, Math.round(points * (1 - rt / this.SHRINK_TIME)));
+      this.score += pts;
+      this.hits++;
+      document.getElementById('rt-score').textContent = this.score;
+      const avg = Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length);
+      document.getElementById('rt-avg').textContent = avg + 'ms';
+
+      const flash = document.createElement('div');
+      flash.className = 'rt-reaction-flash';
+      flash.style.color = hue;
+      flash.textContent = `+${pts}`;
+      this.field.appendChild(flash);
+      setTimeout(() => flash.remove(), 800);
+
+      clearTimeout(this.expireTimer);
+      target.remove();
+      this.scheduleNext();
+    });
+
+    this.expireTimer = setTimeout(() => {
+      target.remove();
+      this.scheduleNext();
+    }, this.SHRINK_TIME);
+  },
+
+  finish() {
+    const avg = this.reactionTimes.length
+      ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length)
+      : 0;
+    showResult('reaction_tap', this.score, `${this.hits}/${this.totalRounds} hit · avg reaction ${avg}ms`);
+  },
+
+  cleanup() {
+    clearTimeout(this.waitTimer);
+    clearTimeout(this.expireTimer);
+  }
+};
+
+// ─── GAME: NUMBER SCATTER ──────────────────────────────────────────
+const GameNumberScatter = {
+  score: 0,
+  current: 1,
+  max: 20,
+  sequence: [],
+  startTime: null,
+  times: [],
+  mistakes: 0,
+
+  init(arena) {
+    this.score = 0; this.current = 1; this.times = []; this.mistakes = 0;
+    arena.innerHTML = `
+      <div class="game-score-bar">
+        <div class="game-score-item">
+          <div class="game-score-label">Score</div>
+          <div class="game-score-value" id="ns-score">0</div>
+        </div>
+        <div class="game-score-item">
+          <div class="game-score-label">Find</div>
+          <div class="game-score-value" id="ns-target" style="color:var(--accent)">1</div>
+        </div>
+        <div class="game-score-item">
+          <div class="game-score-label">Mistakes</div>
+          <div class="game-score-value" id="ns-mistakes">0</div>
+        </div>
+      </div>
+      <div id="ns-field">
+        <div class="ns-prompt">Find: <strong id="ns-prompt-num">1</strong></div>
+      </div>
+    `;
+    this.field = document.getElementById('ns-field');
+    this.startTime = Date.now();
+    this.scatter();
+  },
+
+  scatter() {
+    const nums = Array.from({length: this.max}, (_, i) => i + 1);
+    for (let i = nums.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [nums[i], nums[j]] = [nums[j], nums[i]];
+    }
+
+    const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
+    const placed = [];
+
+    nums.forEach(n => {
+      let x, y, attempts = 0, ok = false;
+      while (!ok && attempts < 50) {
+        x = 40 + Math.random() * (fw - 80);
+        y = 50 + Math.random() * (fh - 80);
+        ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 55);
+        attempts++;
+      }
+      placed.push({x, y});
+
+      const el = document.createElement('div');
+      el.className = 'ns-number';
+      el.textContent = n;
+      el.dataset.num = n;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.addEventListener('click', () => this.tap(n, el));
+      this.field.appendChild(el);
+    });
+  },
+
+  tap(n, el) {
+    if (n === this.current) {
+      el.classList.add('correct');
+      el.style.pointerEvents = 'none';
+      this.score += 10;
+      this.times.push(Date.now() - this.startTime);
+      this.startTime = Date.now();
+      document.getElementById('ns-score').textContent = this.score;
+      this.current++;
+      if (this.current > this.max) { this.finish(); return; }
+      document.getElementById('ns-target').textContent = this.current;
+      document.getElementById('ns-prompt-num').textContent = this.current;
+    } else {
+      el.classList.add('wrong');
+      this.mistakes++;
+      this.score = Math.max(0, this.score - 3);
+      document.getElementById('ns-score').textContent = this.score;
+      document.getElementById('ns-mistakes').textContent = this.mistakes;
+      setTimeout(() => el.classList.remove('wrong'), 300);
+    }
+  },
+
+  finish() {
+    const avg = this.times.length
+      ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length)
+      : 0;
+    showResult('number_scatter', this.score, `All 20 found · avg ${avg}ms per number · ${this.mistakes} mistake${this.mistakes !== 1 ? 's' : ''}`);
+  },
+
+  cleanup() {}
+};
