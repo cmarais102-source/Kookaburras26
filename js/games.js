@@ -1,24 +1,44 @@
+// ─── DIFFICULTY CONFIG ────────────────────────────────────────────
+// Each exercise has 3 levels. Unlock threshold: score >= unlock_score
+const DIFFICULTIES = {
+  peripheral_flash: [
+    { level: 1, label: 'Easy',   dotLifetime: 1400, rounds: 20, unlock_score: 16 },
+    { level: 2, label: 'Medium', dotLifetime: 1000, rounds: 25, unlock_score: 20 },
+    { level: 3, label: 'Hard',   dotLifetime: 700,  rounds: 30, unlock_score: null }
+  ],
+  arrow_reaction: [
+    { level: 1, label: 'Easy',   rounds: 15, minDelay: 800,  maxDelay: 1600, unlock_score: 80 },
+    { level: 2, label: 'Medium', rounds: 20, minDelay: 500,  maxDelay: 1200, unlock_score: 130 },
+    { level: 3, label: 'Hard',   rounds: 25, minDelay: 300,  maxDelay: 900,  unlock_score: null }
+  ],
+  number_scatter: [
+    { level: 1, label: 'Easy',   count: 20, ordered: true,  unlock_score: 180 },
+    { level: 2, label: 'Medium', count: 20, ordered: false, unlock_score: 150 },
+    { level: 3, label: 'Hard',   count: 30, ordered: false, unlock_score: null }
+  ]
+};
+
 // ─── EXERCISE DEFINITIONS ─────────────────────────────────────────
 const EXERCISES = [
   {
     id: 'peripheral_flash',
     name: 'Peripheral Flash',
     icon: '👁️',
-    desc: 'Keep your eyes on the centre dot. Click flashing targets in your periphery without looking away.',
+    desc: 'Keep eyes on the centre dot. Click flashing targets in your periphery without looking away.',
     locked: false
   },
   {
-    id: 'reaction_tap',
-    name: 'Reaction Tap',
-    icon: '⚡',
-    desc: 'Tap targets the instant they appear. Speed matters — slower taps score less.',
+    id: 'arrow_reaction',
+    name: 'Arrow Reaction',
+    icon: '🎯',
+    desc: 'An arrow points a direction — tap the matching button as fast as you can.',
     locked: false
   },
   {
     id: 'number_scatter',
     name: 'Number Scatter',
     icon: '🔢',
-    desc: 'Find and tap numbers in sequence as fast as possible. Builds visual search speed.',
+    desc: 'Find and tap numbers in sequence as fast as possible. Harder levels use random order.',
     locked: false
   },
   {
@@ -60,49 +80,31 @@ const EXERCISES = [
 
 // ─── GAME: PERIPHERAL FLASH ───────────────────────────────────────
 const GamePeripheralFlash = {
-  score: 0,
-  missed: 0,
-  round: 0,
-  maxRounds: 20,
-  activeDot: null,
-  dotTimer: null,
-  dotTimeout: null,
-  DOT_LIFETIME: 1200,
+  score: 0, missed: 0, round: 0,
+  config: null, dotTimeout: null,
 
-  init(arena) {
+  init(arena, difficulty) {
     this.score = 0; this.missed = 0; this.round = 0;
+    this.config = difficulty || DIFFICULTIES.peripheral_flash[0];
     arena.innerHTML = `
       <div class="game-score-bar">
-        <div class="game-score-item">
-          <div class="game-score-label">Score</div>
-          <div class="game-score-value" id="pf-score">0</div>
-        </div>
-        <div class="game-score-item">
-          <div class="game-score-label">Round</div>
-          <div class="game-score-value" id="pf-round">0 / ${this.maxRounds}</div>
-        </div>
-        <div class="game-score-item">
-          <div class="game-score-label">Missed</div>
-          <div class="game-score-value" id="pf-missed">0</div>
-        </div>
+        <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="pf-score">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Round</div><div class="game-score-value" id="pf-round">0 / ${this.config.rounds}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Missed</div><div class="game-score-value" id="pf-missed">0</div></div>
       </div>
-      <div id="pf-field">
-        <div class="pf-center"></div>
-      </div>
+      <div id="pf-field"><div class="pf-center"></div></div>
     `;
     this.field = document.getElementById('pf-field');
     this.nextDot();
   },
 
   nextDot() {
-    if (this.round >= this.maxRounds) { this.finish(); return; }
+    if (this.round >= this.config.rounds) { this.finish(); return; }
     this.round++;
-    document.getElementById('pf-round').textContent = `${this.round} / ${this.maxRounds}`;
+    document.getElementById('pf-round').textContent = `${this.round} / ${this.config.rounds}`;
 
     const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
-    const cx = fw / 2, cy = fh / 2;
-    const minDist = 100;
-
+    const cx = fw / 2, cy = fh / 2, minDist = 120;
     let x, y, attempts = 0;
     do {
       const angle = Math.random() * Math.PI * 2;
@@ -110,14 +112,13 @@ const GamePeripheralFlash = {
       x = cx + Math.cos(angle) * dist;
       y = cy + Math.sin(angle) * dist;
       attempts++;
-    } while (attempts < 20 && (x < 20 || x > fw - 20 || y < 20 || y > fh - 20));
+    } while (attempts < 30 && (x < 20 || x > fw - 20 || y < 20 || y > fh - 20));
 
     const dot = document.createElement('div');
     dot.className = 'pf-dot';
     dot.style.left = x + 'px';
     dot.style.top = y + 'px';
     this.field.appendChild(dot);
-    this.activeDot = dot;
 
     dot.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -127,168 +128,181 @@ const GamePeripheralFlash = {
       document.getElementById('pf-score').textContent = this.score;
       dot.style.background = 'var(--accent)';
       dot.style.boxShadow = '0 0 16px var(--accent)';
-      setTimeout(() => { dot.remove(); this.nextDot(); }, 200);
+      setTimeout(() => { dot.remove(); this.nextDot(); }, 180);
     });
 
     this.dotTimeout = setTimeout(() => {
       dot.classList.add('pf-missed');
       this.missed++;
       document.getElementById('pf-missed').textContent = this.missed;
-      setTimeout(() => { dot.remove(); this.nextDot(); }, 400);
-    }, this.DOT_LIFETIME);
+      setTimeout(() => { dot.remove(); this.nextDot(); }, 350);
+    }, this.config.dotLifetime);
   },
 
   finish() {
-    const pct = Math.round((this.score / this.maxRounds) * 100);
-    showResult('peripheral_flash', this.score, `${this.score}/${this.maxRounds} caught — ${pct}% accuracy`);
+    const pct = Math.round((this.score / this.config.rounds) * 100);
+    showResult('peripheral_flash', this.score, `${this.score}/${this.config.rounds} caught — ${pct}% accuracy`, this.config.level);
   },
-
-  cleanup() {
-    clearTimeout(this.dotTimeout);
-  }
+  cleanup() { clearTimeout(this.dotTimeout); }
 };
 
-// ─── GAME: REACTION TAP ────────────────────────────────────────────
-const GameReactionTap = {
-  score: 0,
-  hits: 0,
-  totalRounds: 15,
-  round: 0,
-  reactionTimes: [],
-  waitTimer: null,
-  shrinkInterval: null,
-  targetEl: null,
-  targetStart: null,
-  SHRINK_TIME: 2000,
+// ─── GAME: ARROW REACTION ─────────────────────────────────────────
+const ARROWS = [
+  { dir: 'up',    emoji: '⬆️', row: 0, col: 1 },
+  { dir: 'left',  emoji: '⬅️', row: 1, col: 0 },
+  { dir: 'right', emoji: '➡️', row: 1, col: 2 },
+  { dir: 'down',  emoji: '⬇️', row: 2, col: 1 }
+];
 
-  init(arena) {
-    this.score = 0; this.hits = 0; this.round = 0; this.reactionTimes = [];
+const GameArrowReaction = {
+  score: 0, hits: 0, wrong: 0, round: 0,
+  reactionTimes: [], currentArrow: null,
+  waitTimer: null, expireTimer: null,
+  config: null, arrowStart: null,
+  EXPIRE_TIME: 2500,
+
+  init(arena, difficulty) {
+    this.score = 0; this.hits = 0; this.wrong = 0; this.round = 0; this.reactionTimes = [];
+    this.config = difficulty || DIFFICULTIES.arrow_reaction[0];
     arena.innerHTML = `
       <div class="game-score-bar">
-        <div class="game-score-item">
-          <div class="game-score-label">Score</div>
-          <div class="game-score-value" id="rt-score">0</div>
-        </div>
-        <div class="game-score-item">
-          <div class="game-score-label">Round</div>
-          <div class="game-score-value" id="rt-round">0 / ${this.totalRounds}</div>
-        </div>
-        <div class="game-score-item">
-          <div class="game-score-label">Avg Reaction</div>
-          <div class="game-score-value" id="rt-avg">—</div>
-        </div>
+        <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="ar-score">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Round</div><div class="game-score-value" id="ar-round">0 / ${this.config.rounds}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Avg Reaction</div><div class="game-score-value" id="ar-avg">—</div></div>
       </div>
-      <div id="rt-field"></div>
+      <div id="ar-field">
+        <div class="ar-arrow-display" id="ar-display">❓</div>
+        <div class="ar-buttons" id="ar-buttons"></div>
+      </div>
     `;
-    this.field = document.getElementById('rt-field');
+    this.display = document.getElementById('ar-display');
+    this.field   = document.getElementById('ar-field');
+    this.buildButtons();
     this.scheduleNext();
   },
 
-  scheduleNext() {
-    if (this.round >= this.totalRounds) { this.finish(); return; }
-    const delay = 600 + Math.random() * 1200;
-    this.waitTimer = setTimeout(() => this.spawnTarget(), delay);
+  buildButtons() {
+    const grid = document.getElementById('ar-buttons');
+    // 3x3 grid: corners empty, arrows at N/S/E/W, centre empty
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const btn = document.createElement('button');
+        const arrow = ARROWS.find(a => a.row === row && a.col === col);
+        if (arrow) {
+          btn.className = 'ar-btn';
+          btn.textContent = arrow.emoji;
+          btn.dataset.dir = arrow.dir;
+          btn.addEventListener('click', () => this.tap(arrow.dir, btn));
+        } else {
+          btn.className = 'ar-btn empty';
+        }
+        grid.appendChild(btn);
+      }
+    }
   },
 
-  spawnTarget() {
+  scheduleNext() {
+    if (this.round >= this.config.rounds) { this.finish(); return; }
+    this.display.textContent = '❓';
+    this.display.className = 'ar-arrow-display';
+    this.currentArrow = null;
+    const delay = this.config.minDelay + Math.random() * (this.config.maxDelay - this.config.minDelay);
+    this.waitTimer = setTimeout(() => this.showArrow(), delay);
+  },
+
+  showArrow() {
     this.round++;
-    document.getElementById('rt-round').textContent = `${this.round} / ${this.totalRounds}`;
+    document.getElementById('ar-round').textContent = `${this.round} / ${this.config.rounds}`;
+    this.currentArrow = ARROWS[Math.floor(Math.random() * ARROWS.length)];
+    this.display.textContent = this.currentArrow.emoji;
+    this.arrowStart = Date.now();
 
-    const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
-    const size = 52 + Math.random() * 24;
-    const x = size/2 + Math.random() * (fw - size);
-    const y = size/2 + Math.random() * (fh - size);
+    this.expireTimer = setTimeout(() => {
+      if (this.currentArrow) {
+        this.display.classList.add('flash-wrong');
+        this.currentArrow = null;
+        setTimeout(() => this.scheduleNext(), 400);
+      }
+    }, this.EXPIRE_TIME);
+  },
 
-    const points = Math.round(10 + (76 - size) * 0.5);
-    const hue = size > 65 ? '#00e676' : size > 55 ? '#ffeb3b' : '#ff6b35';
+  tap(dir, btn) {
+    if (!this.currentArrow) return;
+    clearTimeout(this.expireTimer);
+    const rt = Date.now() - this.arrowStart;
 
-    const target = document.createElement('div');
-    target.className = 'rt-target';
-    target.style.left = x + 'px';
-    target.style.top = y + 'px';
-    target.style.width = size + 'px';
-    target.style.height = size + 'px';
-    target.style.background = hue;
-    target.style.fontSize = Math.round(size * 0.35) + 'px';
-    target.innerHTML = `${points}<div class="rt-shrink-bar" id="rt-shrink"></div>`;
-    this.field.appendChild(target);
-    this.targetEl = target;
-    this.targetStart = Date.now();
-
-    const bar = document.getElementById('rt-shrink');
-    bar.style.transition = `width ${this.SHRINK_TIME}ms linear`;
-    requestAnimationFrame(() => { bar.style.width = '0%'; });
-
-    target.addEventListener('click', () => {
-      const rt = Date.now() - this.targetStart;
-      this.reactionTimes.push(rt);
-      const pts = Math.max(1, Math.round(points * (1 - rt / this.SHRINK_TIME)));
+    if (dir === this.currentArrow.dir) {
+      const pts = Math.max(5, Math.round(15 - rt / 100));
       this.score += pts;
       this.hits++;
-      document.getElementById('rt-score').textContent = this.score;
+      this.reactionTimes.push(rt);
+      this.display.classList.add('flash-correct');
+      btn.classList.add('correct');
+      document.getElementById('ar-score').textContent = this.score;
       const avg = Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length);
-      document.getElementById('rt-avg').textContent = avg + 'ms';
+      document.getElementById('ar-avg').textContent = avg + 'ms';
 
       const flash = document.createElement('div');
-      flash.className = 'rt-reaction-flash';
-      flash.style.color = hue;
+      flash.className = 'ar-reaction-flash';
+      flash.style.color = 'var(--accent)';
       flash.textContent = `+${pts}`;
       this.field.appendChild(flash);
       setTimeout(() => flash.remove(), 800);
+    } else {
+      this.wrong++;
+      this.score = Math.max(0, this.score - 3);
+      this.display.classList.add('flash-wrong');
+      btn.classList.add('wrong');
+      document.getElementById('ar-score').textContent = this.score;
+    }
 
-      clearTimeout(this.expireTimer);
-      target.remove();
+    this.currentArrow = null;
+    setTimeout(() => {
+      btn.classList.remove('correct', 'wrong');
       this.scheduleNext();
-    });
-
-    this.expireTimer = setTimeout(() => {
-      target.remove();
-      this.scheduleNext();
-    }, this.SHRINK_TIME);
+    }, 350);
   },
 
   finish() {
     const avg = this.reactionTimes.length
-      ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length)
-      : 0;
-    showResult('reaction_tap', this.score, `${this.hits}/${this.totalRounds} hit · avg reaction ${avg}ms`);
+      ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length) : 0;
+    showResult('arrow_reaction', this.score, `${this.hits}/${this.config.rounds} correct · avg reaction ${avg}ms`, this.config.level);
   },
-
-  cleanup() {
-    clearTimeout(this.waitTimer);
-    clearTimeout(this.expireTimer);
-  }
+  cleanup() { clearTimeout(this.waitTimer); clearTimeout(this.expireTimer); }
 };
 
 // ─── GAME: NUMBER SCATTER ──────────────────────────────────────────
 const GameNumberScatter = {
-  score: 0,
-  current: 1,
-  max: 20,
-  sequence: [],
-  startTime: null,
-  times: [],
-  mistakes: 0,
+  score: 0, current: 0, sequence: [], times: [], mistakes: 0,
+  config: null, startTime: null,
 
-  init(arena) {
-    this.score = 0; this.current = 1; this.times = []; this.mistakes = 0;
+  init(arena, difficulty) {
+    this.score = 0; this.current = 0; this.times = []; this.mistakes = 0;
+    this.config = difficulty || DIFFICULTIES.number_scatter[0];
+
+    // Build sequence
+    const nums = Array.from({length: this.config.count}, (_, i) => i + 1);
+    if (!this.config.ordered) {
+      // Shuffle for random order mode
+      for (let i = nums.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [nums[i], nums[j]] = [nums[j], nums[i]];
+      }
+    }
+    this.sequence = nums;
+
+    const targetLabel = this.config.ordered
+      ? `Find 1 → ${this.config.count} in order`
+      : `Find numbers in this order: ${nums.slice(0,5).join(' → ')}...`;
+
     arena.innerHTML = `
       <div class="game-score-bar">
-        <div class="game-score-item">
-          <div class="game-score-label">Score</div>
-          <div class="game-score-value" id="ns-score">0</div>
-        </div>
-        <div class="game-score-item">
-          <div class="game-score-label">Find</div>
-          <div class="game-score-value" id="ns-target" style="color:var(--accent)">1</div>
-        </div>
-        <div class="game-score-item">
-          <div class="game-score-label">Mistakes</div>
-          <div class="game-score-value" id="ns-mistakes">0</div>
-        </div>
+        <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="ns-score">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Next</div><div class="game-score-value" id="ns-target" style="color:var(--accent)">${nums[0]}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Mistakes</div><div class="game-score-value" id="ns-mistakes">0</div></div>
       </div>
       <div id="ns-field">
-        <div class="ns-prompt">Find: <strong id="ns-prompt-num">1</strong></div>
+        <div class="ns-prompt">Find: <strong id="ns-prompt-num">${nums[0]}</strong></div>
       </div>
     `;
     this.field = document.getElementById('ns-field');
@@ -297,21 +311,23 @@ const GameNumberScatter = {
   },
 
   scatter() {
-    const nums = Array.from({length: this.max}, (_, i) => i + 1);
-    for (let i = nums.length - 1; i > 0; i--) {
+    // Place all numbers from sequence scattered randomly
+    const displayNums = [...this.sequence];
+    // Shuffle display positions
+    for (let i = displayNums.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [nums[i], nums[j]] = [nums[j], nums[i]];
+      [displayNums[i], displayNums[j]] = [displayNums[j], displayNums[i]];
     }
 
     const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
     const placed = [];
 
-    nums.forEach(n => {
+    displayNums.forEach(n => {
       let x, y, attempts = 0, ok = false;
-      while (!ok && attempts < 50) {
+      while (!ok && attempts < 60) {
         x = 40 + Math.random() * (fw - 80);
         y = 50 + Math.random() * (fh - 80);
-        ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 55);
+        ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 52);
         attempts++;
       }
       placed.push({x, y});
@@ -328,7 +344,8 @@ const GameNumberScatter = {
   },
 
   tap(n, el) {
-    if (n === this.current) {
+    const target = this.sequence[this.current];
+    if (n === target) {
       el.classList.add('correct');
       el.style.pointerEvents = 'none';
       this.score += 10;
@@ -336,9 +353,10 @@ const GameNumberScatter = {
       this.startTime = Date.now();
       document.getElementById('ns-score').textContent = this.score;
       this.current++;
-      if (this.current > this.max) { this.finish(); return; }
-      document.getElementById('ns-target').textContent = this.current;
-      document.getElementById('ns-prompt-num').textContent = this.current;
+      if (this.current >= this.sequence.length) { this.finish(); return; }
+      const next = this.sequence[this.current];
+      document.getElementById('ns-target').textContent = next;
+      document.getElementById('ns-prompt-num').textContent = next;
     } else {
       el.classList.add('wrong');
       this.mistakes++;
@@ -351,10 +369,11 @@ const GameNumberScatter = {
 
   finish() {
     const avg = this.times.length
-      ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length)
-      : 0;
-    showResult('number_scatter', this.score, `All 20 found · avg ${avg}ms per number · ${this.mistakes} mistake${this.mistakes !== 1 ? 's' : ''}`);
+      ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length) : 0;
+    const mode = this.config.ordered ? 'ordered' : 'random order';
+    showResult('number_scatter', this.score,
+      `All ${this.config.count} found (${mode}) · avg ${avg}ms · ${this.mistakes} mistake${this.mistakes !== 1 ? 's' : ''}`,
+      this.config.level);
   },
-
   cleanup() {}
 };
