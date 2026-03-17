@@ -1,5 +1,5 @@
 // ─── AUTH & STORAGE ───────────────────────────────────────────────
-const ADMIN_USER = 'cmarais';
+const ADMIN_USER = 'craig.marais19';
 
 const Auth = {
   USERS_KEY:   'vt_users',
