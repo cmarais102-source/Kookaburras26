@@ -194,16 +194,47 @@ const GameArrowReaction = {
     }
 
     const wrap = document.getElementById('ar-arrows-wrap');
-    if(!wrap) return;
-    wrap.innerHTML = '';
-    arrows.forEach(a=>{
-      const el=document.createElement('div');
-      el.className='ar-arrow-item';
-      el.textContent=a.dir.arrow;
-      el.style.color=a.colour.hex;
-      el.style.textShadow=`0 0 12px ${a.colour.hex}88`;
-      wrap.appendChild(el);
-    });
+if(!wrap) return;
+wrap.innerHTML = '';
+
+if(this.cfg.scattered) {
+  // Level 10+ — arrows placed randomly anywhere in the field
+  const field = document.getElementById('ar-field');
+  const fw = field.offsetWidth || 600;
+  const fh = field.offsetHeight || 400;
+  const placed = [];
+  arrows.forEach(a=>{
+    const el=document.createElement('div');
+    el.className='ar-arrow-item ar-arrow-scattered';
+    el.textContent=a.dir.arrow;
+    el.style.color=a.colour.hex;
+    el.style.textShadow=`0 0 12px ${a.colour.hex}88`;
+    // Find a non-overlapping position
+    let x, y, attempts=0, ok=false;
+    while(!ok && attempts<50){
+      x = 60 + Math.random()*(fw-120);
+      y = 60 + Math.random()*(fh-120);
+      ok = placed.every(p=>Math.hypot(p.x-x,p.y-y)>70);
+      attempts++;
+    }
+    placed.push({x,y});
+    el.style.left = x+'px';
+    el.style.top  = y+'px';
+    field.appendChild(el);
+    this._scatteredEls = this._scatteredEls || [];
+    this._scatteredEls.push(el);
+  });
+} else {
+  // Level 1-9 — arrows in a neat centred cluster
+  arrows.forEach(a=>{
+    const el=document.createElement('div');
+    el.className='ar-arrow-item';
+    el.textContent=a.dir.arrow;
+    el.style.color=a.colour.hex;
+    el.style.textShadow=`0 0 12px ${a.colour.hex}88`;
+    wrap.appendChild(el);
+  });
+}
 
     this.expireTimer = setTimeout(()=>{
       if(this.currentDir) {
