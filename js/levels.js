@@ -1,0 +1,98 @@
+// ─── LEVEL SYSTEM ─────────────────────────────────────────────────
+// 40 levels per exercise, grouped in stages of 5.
+// To unlock stage N+1, all exercises must reach level N*5.
+// Passing a level = meet accuracy% across 3 consecutive rounds.
+
+const STAGE_SIZE = 5;
+const MAX_LEVEL  = 40;
+
+// Interpolate a value from start to end over 40 levels
+function lerp(start, end, level) {
+  return Math.round(start + (end - start) * ((level - 1) / (MAX_LEVEL - 1)));
+}
+
+// ── PERIPHERAL FLASH levels ──────────────────────────────────────
+function pfLevel(n) {
+  return {
+    level:        n,
+    rounds:       lerp(15, 40, n),           // 15 → 40 rounds
+    dotLifetime:  lerp(1400, 550, n),         // 1400ms → 550ms (faster)
+    passAccuracy: lerp(60, 90, n),            // 60% → 90% required
+    label:        levelLabel(n)
+  };
+}
+
+// ── ARROW REACTION levels ────────────────────────────────────────
+function arLevel(n) {
+  // arrowCount = how many distractor arrows appear alongside target
+  // Easy levels: 2-4 arrows, Hard levels: 8-16 arrows
+  const totalArrows = lerp(2, 16, n);
+  return {
+    level:        n,
+    rounds:       lerp(12, 30, n),
+    totalArrows,
+    expireTime:   lerp(2800, 900, n),         // ms before arrow expires
+    minDelay:     lerp(900, 250, n),
+    maxDelay:     lerp(1800, 700, n),
+    passAccuracy: lerp(60, 90, n),
+    label:        levelLabel(n)
+  };
+}
+
+// ── NUMBER SCATTER levels ────────────────────────────────────────
+function nsLevel(n) {
+  // number pool gets bigger & includes multi-digit, order becomes random mid-way
+  const count    = lerp(10, 25, n);
+  const ordered  = n <= 10;                   // ordered only for first 10 levels
+  const maxDigit = n <= 10 ? 2 : n <= 25 ? 3 : 3; // 1-2 digit → includes 3 digit
+  return {
+    level:        n,
+    count,
+    ordered,
+    maxDigit,
+    passAccuracy: lerp(60, 90, n),            // accuracy = % found without mistakes
+    timeLimit:    lerp(90, 40, n),            // seconds to complete (stricter)
+    label:        levelLabel(n)
+  };
+}
+
+function levelLabel(n) {
+  if (n <= 8)  return 'Beginner';
+  if (n <= 16) return 'Easy';
+  if (n <= 24) return 'Intermediate';
+  if (n <= 32) return 'Advanced';
+  return 'Elite';
+}
+
+function levelColour(n) {
+  if (n <= 8)  return '#69f0ae';   // green
+  if (n <= 16) return '#00e676';   // bright green
+  if (n <= 24) return '#ffd54f';   // gold
+  if (n <= 32) return '#ff6b35';   // orange
+  return '#f44336';                // red
+}
+
+// Build full level tables
+const LEVELS = {
+  peripheral_flash: Array.from({length: MAX_LEVEL}, (_, i) => pfLevel(i + 1)),
+  arrow_reaction:   Array.from({length: MAX_LEVEL}, (_, i) => arLevel(i + 1)),
+  number_scatter:   Array.from({length: MAX_LEVEL}, (_, i) => nsLevel(i + 1))
+};
+
+function getLevel(exId, n) {
+  return LEVELS[exId] ? LEVELS[exId][Math.min(n, MAX_LEVEL) - 1] : null;
+}
+
+// Stage a level belongs to (1-8)
+function levelStage(n) { return Math.ceil(n / STAGE_SIZE); }
+
+// Max level accessible given the user's current level across all exercises
+function maxAccessibleLevel(userLevels) {
+  // User can play up to the next stage gate
+  const mins = Object.values(userLevels);
+  if (!mins.length) return STAGE_SIZE;
+  const lowestCompleted = Math.min(...mins.map(l => l - 1)); // completed = reached - 1
+  // Round down to nearest stage boundary, then open next stage
+  const completedStages = Math.floor(lowestCompleted / STAGE_SIZE);
+  return Math.min(MAX_LEVEL, (completedStages + 1) * STAGE_SIZE);
+}
