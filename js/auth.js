@@ -1,29 +1,42 @@
 // ─── AUTH & STORAGE ───────────────────────────────────────────────
+const ADMIN_USER = 'cmarais';
+
 const Auth = {
-  USERS_KEY: 'vt_users',
+  USERS_KEY:   'vt_users',
   SESSION_KEY: 'vt_session',
 
-  getUsers() { return JSON.parse(localStorage.getItem(this.USERS_KEY) || '{}'); },
-  saveUsers(u) { localStorage.setItem(this.USERS_KEY, JSON.stringify(u)); },
+  getUsers()     { return JSON.parse(localStorage.getItem(this.USERS_KEY) || '{}'); },
+  saveUsers(u)   { localStorage.setItem(this.USERS_KEY, JSON.stringify(u)); },
+
+  _blank(username, password) {
+    return {
+      username,
+      password:  btoa(password),
+      createdAt: Date.now(),
+      sessions:  [],
+      bests:     {},
+      // current reached level per exercise (1 = just started)
+      levels: {
+        peripheral_flash: 1,
+        arrow_reaction:   1,
+        number_scatter:   1
+      },
+      // consecutive passes tracker {exId: count}
+      consecutive: {
+        peripheral_flash: 0,
+        arrow_reaction:   0,
+        number_scatter:   0
+      }
+    };
+  },
 
   register(username, password) {
     const users = this.getUsers();
-    const key = username.toLowerCase().trim();
-    if (!key || key.length < 2) return { ok: false, msg: 'Username must be at least 2 characters.' };
-    if (password.length < 4) return { ok: false, msg: 'Password must be at least 4 characters.' };
-    if (users[key]) return { ok: false, msg: 'Username already taken.' };
-    users[key] = {
-      username: username.trim(),
-      password: btoa(password),
-      createdAt: Date.now(),
-      sessions: [],
-      bests: {},
-      unlockedLevels: {
-        peripheral_flash: 1,
-        arrow_reaction: 1,
-        number_scatter: 1
-      }
-    };
+    const key   = username.toLowerCase().trim();
+    if (!key || key.length < 2)  return { ok: false, msg: 'Username must be at least 2 characters.' };
+    if (password.length < 4)     return { ok: false, msg: 'Password must be at least 4 characters.' };
+    if (users[key])               return { ok: false, msg: 'Username already taken.' };
+    users[key] = this._blank(username.trim(), password);
     this.saveUsers(users);
     this.login(username, password);
     return { ok: true };
@@ -31,104 +44,105 @@ const Auth = {
 
   login(username, password) {
     const users = this.getUsers();
-    const key = username.toLowerCase().trim();
-    const user = users[key];
-    if (!user) return { ok: false, msg: 'User not found.' };
+    const key   = username.toLowerCase().trim();
+    const user  = users[key];
+    if (!user)                          return { ok: false, msg: 'User not found.' };
     if (atob(user.password) !== password) return { ok: false, msg: 'Incorrect password.' };
-    // Migrate old accounts
-    if (!user.unlockedLevels) {
-      user.unlockedLevels = { peripheral_flash: 1, arrow_reaction: 1, number_scatter: 1 };
-      this.saveUsers(users);
-    }
+    // migrate old accounts
+    if (!user.levels)      user.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1 };
+    if (!user.consecutive) user.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0 };
+    this.saveUsers(users);
     sessionStorage.setItem(this.SESSION_KEY, key);
     return { ok: true };
   },
 
-  logout() { sessionStorage.removeItem(this.SESSION_KEY); },
-  currentKey() { return sessionStorage.getItem(this.SESSION_KEY); },
+  logout()       { sessionStorage.removeItem(this.SESSION_KEY); },
+  currentKey()   { return sessionStorage.getItem(this.SESSION_KEY); },
+  currentUser()  {
+    const key = this.currentKey();
+    return key ? (this.getUsers()[key] || null) : null;
+  },
+  isAdmin()      { return this.currentKey() === ADMIN_USER.toLowerCase(); },
 
-  currentUser() {
+  // ── Save a completed round and check level progression ──────────
+  saveSession(data) {
     const key = this.currentKey();
     if (!key) return null;
-    return this.getUsers()[key] || null;
-  },
-
-  saveSession(sessionData) {
-    const key = this.currentKey();
-    if (!key) return;
     const users = this.getUsers();
-    if (!users[key]) return;
-    const u = users[key];
+    const u     = users[key];
+    if (!u) return null;
 
-    u.sessions.unshift(sessionData);
-    if (u.sessions.length > 60) u.sessions.length = 60;
+    u.sessions.unshift(data);
+    if (u.sessions.length > 200) u.sessions.length = 200;
 
-    // Update best per exercise+level
-    const bestKey = `${sessionData.exercise}_L${sessionData.level || 1}`;
-    if (!u.bests[bestKey] || sessionData.score > u.bests[bestKey]) {
-      u.bests[bestKey] = sessionData.score;
-    }
-    // Also store flat best
-    if (!u.bests[sessionData.exercise] || sessionData.score > u.bests[sessionData.exercise]) {
-      u.bests[sessionData.exercise] = sessionData.score;
-    }
+    // best score per exercise+level
+    const bk = `${data.exercise}_L${data.level}`;
+    if (!u.bests[bk] || data.score > u.bests[bk]) u.bests[bk] = data.score;
+    if (!u.bests[data.exercise] || data.score > u.bests[data.exercise]) u.bests[data.exercise] = data.score;
 
-    // Check for unlock
-    const unlocked = this.checkUnlock(u, sessionData.exercise, sessionData.level || 1, sessionData.score);
-    this.saveUsers(users);
-    return unlocked;
-  },
+    // ── consecutive pass check ──
+    let levelUp = null;
+    const exId     = data.exercise;
+    const curLevel = u.levels[exId] || 1;
+    const cfg      = getLevel(exId, curLevel);
 
-  checkUnlock(user, exId, level, score) {
-    const diffs = DIFFICULTIES[exId];
-    if (!diffs) return null;
-    const current = diffs.find(d => d.level === level);
-    if (!current || !current.unlock_score) return null;
-    if (score >= current.unlock_score) {
-      const nextLevel = level + 1;
-      const currentUnlocked = user.unlockedLevels[exId] || 1;
-      if (nextLevel > currentUnlocked && nextLevel <= diffs.length) {
-        user.unlockedLevels[exId] = nextLevel;
-        return { exercise: exId, newLevel: nextLevel, label: diffs[nextLevel - 1].label };
+    if (data.passed) {
+      u.consecutive[exId] = (u.consecutive[exId] || 0) + 1;
+      if (u.consecutive[exId] >= 3) {
+        // Check stage gate: can they advance?
+        const nextLevel = curLevel + 1;
+        const accessible = maxAccessibleLevel(u.levels);
+        if (nextLevel <= accessible && nextLevel <= MAX_LEVEL) {
+          u.levels[exId]      = nextLevel;
+          u.consecutive[exId] = 0;
+          levelUp = { exercise: exId, newLevel: nextLevel };
+        }
       }
+    } else {
+      u.consecutive[exId] = 0;
     }
-    return null;
+
+    this.saveUsers(users);
+    return levelUp;
   },
 
-  getUnlockedLevel(exId) {
-    const user = this.currentUser();
-    return (user && user.unlockedLevels && user.unlockedLevels[exId]) || 1;
+  getUserLevel(exId) {
+    const u = this.currentUser();
+    return (u && u.levels && u.levels[exId]) || 1;
   },
 
-  getHistory() {
-    const user = this.currentUser();
-    return user ? user.sessions : [];
+  getConsecutive(exId) {
+    const u = this.currentUser();
+    return (u && u.consecutive && u.consecutive[exId]) || 0;
   },
 
-  getBest(exerciseId, level) {
-    const user = this.currentUser();
-    if (!user) return null;
-    if (level) {
-      return user.bests[`${exerciseId}_L${level}`] || null;
-    }
-    return user.bests[exerciseId] || null;
+  getMaxAccessible() {
+    const u = this.currentUser();
+    if (!u) return STAGE_SIZE;
+    return maxAccessibleLevel(u.levels);
+  },
+
+  getBest(exId, level) {
+    const u = this.currentUser();
+    if (!u) return null;
+    return level ? (u.bests[`${exId}_L${level}`] || null) : (u.bests[exId] || null);
   },
 
   getTodaySeconds() {
-    const user = this.currentUser();
-    if (!user) return 0;
+    const u = this.currentUser();
+    if (!u) return 0;
     const today = new Date().toDateString();
-    return user.sessions
+    return u.sessions
       .filter(s => new Date(s.ts).toDateString() === today)
       .reduce((sum, s) => sum + (s.duration || 0), 0);
   },
 
   getStreakDays() {
-    const user = this.currentUser();
-    if (!user || !user.sessions.length) return 0;
-    const days = [...new Set(user.sessions.map(s => new Date(s.ts).toDateString()))];
-    let streak = 0;
-    const now = new Date();
+    const u = this.currentUser();
+    if (!u || !u.sessions.length) return 0;
+    const days  = [...new Set(u.sessions.map(s => new Date(s.ts).toDateString()))];
+    let streak  = 0;
+    const now   = new Date();
     for (let i = 0; i < 365; i++) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
@@ -138,14 +152,35 @@ const Auth = {
     return streak;
   },
 
+  getHistory(limit) {
+    const u = this.currentUser();
+    const s = u ? u.sessions : [];
+    return limit ? s.slice(0, limit) : s;
+  },
+
   resetData() {
     const key = this.currentKey();
     if (!key) return;
     const users = this.getUsers();
     if (!users[key]) return;
-    users[key].sessions = [];
-    users[key].bests = {};
-    users[key].unlockedLevels = { peripheral_flash: 1, arrow_reaction: 1, number_scatter: 1 };
+    const u = users[key];
+    u.sessions    = [];
+    u.bests       = {};
+    u.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1 };
+    u.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0 };
     this.saveUsers(users);
+  },
+
+  // ── Admin helpers ────────────────────────────────────────────────
+  getAllUsers() {
+    const users = this.getUsers();
+    return Object.entries(users).map(([key, u]) => ({
+      key,
+      username:    u.username,
+      createdAt:   u.createdAt,
+      sessions:    u.sessions || [],
+      levels:      u.levels   || {},
+      consecutive: u.consecutive || {}
+    }));
   }
 };
