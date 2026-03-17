@@ -1,379 +1,386 @@
-// ─── DIFFICULTY CONFIG ────────────────────────────────────────────
-// Each exercise has 3 levels. Unlock threshold: score >= unlock_score
-const DIFFICULTIES = {
-  peripheral_flash: [
-    { level: 1, label: 'Easy',   dotLifetime: 1400, rounds: 20, unlock_score: 16 },
-    { level: 2, label: 'Medium', dotLifetime: 1000, rounds: 25, unlock_score: 20 },
-    { level: 3, label: 'Hard',   dotLifetime: 700,  rounds: 30, unlock_score: null }
-  ],
-  arrow_reaction: [
-    { level: 1, label: 'Easy',   rounds: 15, minDelay: 800,  maxDelay: 1600, unlock_score: 80 },
-    { level: 2, label: 'Medium', rounds: 20, minDelay: 500,  maxDelay: 1200, unlock_score: 130 },
-    { level: 3, label: 'Hard',   rounds: 25, minDelay: 300,  maxDelay: 900,  unlock_score: null }
-  ],
-  number_scatter: [
-    { level: 1, label: 'Easy',   count: 20, ordered: true,  unlock_score: 180 },
-    { level: 2, label: 'Medium', count: 20, ordered: false, unlock_score: 150 },
-    { level: 3, label: 'Hard',   count: 30, ordered: false, unlock_score: null }
-  ]
-};
-
-// ─── EXERCISE DEFINITIONS ─────────────────────────────────────────
+// ─── EXERCISE REGISTRY ────────────────────────────────────────────
 const EXERCISES = [
-  {
-    id: 'peripheral_flash',
-    name: 'Peripheral Flash',
-    icon: '👁️',
-    desc: 'Keep eyes on the centre dot. Click flashing targets in your periphery without looking away.',
-    locked: false
-  },
-  {
-    id: 'arrow_reaction',
-    name: 'Arrow Reaction',
-    icon: '🎯',
-    desc: 'An arrow points a direction — tap the matching button as fast as you can.',
-    locked: false
-  },
-  {
-    id: 'number_scatter',
-    name: 'Number Scatter',
-    icon: '🔢',
-    desc: 'Find and tap numbers in sequence as fast as possible. Harder levels use random order.',
-    locked: false
-  },
-  {
-    id: 'coming_soon_1',
-    name: 'Split Tracking',
-    icon: '🔀',
-    desc: 'Track two moving objects simultaneously — mirrors tracking ball and player at once.',
-    locked: true
-  },
-  {
-    id: 'coming_soon_2',
-    name: 'Pattern Flash',
-    icon: '🧩',
-    desc: 'Brief patterns appear — replicate the play diagram. Builds hockey IQ and memory.',
-    locked: true
-  },
-  {
-    id: 'coming_soon_3',
-    name: 'Focus Shift',
-    icon: '🎯',
-    desc: 'Rapidly shift focus between near and far targets. Trains visual switching speed.',
-    locked: true
-  },
-  {
-    id: 'coming_soon_4',
-    name: 'Puck Pursuit',
-    icon: '🏑',
-    desc: 'Track a fast-moving target across the field. Simulates tracking a moving ball.',
-    locked: true
-  },
-  {
-    id: 'coming_soon_5',
-    name: 'Contrast Vision',
-    icon: '🌫️',
-    desc: 'Detect low-contrast targets quickly — trains vision in poor weather conditions.',
-    locked: true
-  }
+  { id:'peripheral_flash', name:'Peripheral Flash', icon:'👁️', desc:'Keep eyes on the centre dot. Click flashing targets in your periphery without looking away.', locked:false },
+  { id:'arrow_reaction',   name:'Arrow Reaction',   icon:'🎯', desc:'Arrows appear in different colours. Use your keyboard arrow keys to match only the target colour arrow.', locked:false },
+  { id:'number_scatter',   name:'Number Scatter',   icon:'🔢', desc:'Numbers are scattered on screen. Find and click them in the correct sequence as fast as possible.', locked:false },
+  { id:'coming_1', name:'Split Tracking',  icon:'🔀', desc:'Track two moving objects simultaneously.', locked:true },
+  { id:'coming_2', name:'Pattern Flash',   icon:'🧩', desc:'Memorise and replicate brief play diagrams.', locked:true },
+  { id:'coming_3', name:'Focus Shift',     icon:'🎯', desc:'Rapidly shift focus between near and far targets.', locked:true },
+  { id:'coming_4', name:'Puck Pursuit',    icon:'🏑', desc:'Track a fast-moving ball across the field.', locked:true },
+  { id:'coming_5', name:'Contrast Vision', icon:'🌫️', desc:'Detect low-contrast targets in challenging conditions.', locked:true }
 ];
 
-// ─── GAME: PERIPHERAL FLASH ───────────────────────────────────────
-const GamePeripheralFlash = {
-  score: 0, missed: 0, round: 0,
-  config: null, dotTimeout: null,
+// ─── ARROW COLOURS ────────────────────────────────────────────────
+const ARROW_COLOURS = [
+  { name:'Blue',   hex:'#4fc3f7', key:'blue'   },
+  { name:'Red',    hex:'#ef5350', key:'red'    },
+  { name:'Yellow', hex:'#ffd54f', key:'yellow' },
+  { name:'Green',  hex:'#00e676', key:'green'  },
+  { name:'Purple', hex:'#ce93d8', key:'purple' },
+  { name:'Orange', hex:'#ff6b35', key:'orange' }
+];
+const ARROW_DIRS = [
+  { dir:'up',    arrow:'↑', key:'ArrowUp'    },
+  { dir:'down',  arrow:'↓', key:'ArrowDown'  },
+  { dir:'left',  arrow:'←', key:'ArrowLeft'  },
+  { dir:'right', arrow:'→', key:'ArrowRight' }
+];
 
-  init(arena, difficulty) {
-    this.score = 0; this.missed = 0; this.round = 0;
-    this.config = difficulty || DIFFICULTIES.peripheral_flash[0];
+// ─── SHARED RESULT HELPER ─────────────────────────────────────────
+function calcPassed(correct, total, requiredPct) {
+  if (!total) return false;
+  return (correct / total) * 100 >= requiredPct;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GAME: PERIPHERAL FLASH
+// ══════════════════════════════════════════════════════════════════
+const GamePeripheralFlash = {
+  score:0, caught:0, missed:0, round:0,
+  cfg:null, dotTimeout:null, field:null,
+
+  init(arena, cfg) {
+    this.score=0; this.caught=0; this.missed=0; this.round=0;
+    this.cfg = cfg;
     arena.innerHTML = `
       <div class="game-score-bar">
-        <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="pf-score">0</div></div>
-        <div class="game-score-item"><div class="game-score-label">Round</div><div class="game-score-value" id="pf-round">0 / ${this.config.rounds}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Caught</div><div class="game-score-value" id="pf-caught">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Round</div><div class="game-score-value" id="pf-round">0/${cfg.rounds}</div></div>
         <div class="game-score-item"><div class="game-score-label">Missed</div><div class="game-score-value" id="pf-missed">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Need</div><div class="game-score-value" style="color:var(--gold)">${cfg.passAccuracy}%</div></div>
       </div>
-      <div id="pf-field"><div class="pf-center"></div></div>
-    `;
+      <div id="pf-field"><div class="pf-center"></div></div>`;
     this.field = document.getElementById('pf-field');
     this.nextDot();
   },
 
   nextDot() {
-    if (this.round >= this.config.rounds) { this.finish(); return; }
+    if (this.round >= this.cfg.rounds) { this.finish(); return; }
     this.round++;
-    document.getElementById('pf-round').textContent = `${this.round} / ${this.config.rounds}`;
+    document.getElementById('pf-round').textContent = `${this.round}/${this.cfg.rounds}`;
 
-    const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
-    const cx = fw / 2, cy = fh / 2, minDist = 120;
-    let x, y, attempts = 0;
+    const fw=this.field.offsetWidth, fh=this.field.offsetHeight;
+    const cx=fw/2, cy=fh/2, minD=Math.min(fw,fh)*0.22;
+    let x,y,att=0;
     do {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = minDist + Math.random() * (Math.min(cx, cy) - minDist - 20);
-      x = cx + Math.cos(angle) * dist;
-      y = cy + Math.sin(angle) * dist;
-      attempts++;
-    } while (attempts < 30 && (x < 20 || x > fw - 20 || y < 20 || y > fh - 20));
+      const a=Math.random()*Math.PI*2, d=minD+Math.random()*(Math.min(cx,cy)-minD-24);
+      x=cx+Math.cos(a)*d; y=cy+Math.sin(a)*d; att++;
+    } while(att<30 && (x<24||x>fw-24||y<24||y>fh-24));
 
-    const dot = document.createElement('div');
-    dot.className = 'pf-dot';
-    dot.style.left = x + 'px';
-    dot.style.top = y + 'px';
+    const dot=document.createElement('div');
+    dot.className='pf-dot';
+    dot.style.left=x+'px'; dot.style.top=y+'px';
     this.field.appendChild(dot);
 
-    dot.addEventListener('click', (e) => {
+    dot.addEventListener('click', (e)=>{
       e.stopPropagation();
-      if (dot.classList.contains('pf-missed')) return;
+      if(dot.classList.contains('pf-missed')) return;
       clearTimeout(this.dotTimeout);
-      this.score++;
-      document.getElementById('pf-score').textContent = this.score;
-      dot.style.background = 'var(--accent)';
-      dot.style.boxShadow = '0 0 16px var(--accent)';
-      setTimeout(() => { dot.remove(); this.nextDot(); }, 180);
+      this.caught++; this.score+=10;
+      document.getElementById('pf-caught').textContent=this.caught;
+      dot.style.background='var(--accent)'; dot.style.boxShadow='0 0 16px var(--accent)';
+      setTimeout(()=>{ dot.remove(); this.nextDot(); },150);
     });
 
-    this.dotTimeout = setTimeout(() => {
-      dot.classList.add('pf-missed');
-      this.missed++;
-      document.getElementById('pf-missed').textContent = this.missed;
-      setTimeout(() => { dot.remove(); this.nextDot(); }, 350);
-    }, this.config.dotLifetime);
+    this.dotTimeout = setTimeout(()=>{
+      dot.classList.add('pf-missed'); this.missed++;
+      document.getElementById('pf-missed').textContent=this.missed;
+      setTimeout(()=>{ dot.remove(); this.nextDot(); },300);
+    }, this.cfg.dotLifetime);
   },
 
   finish() {
-    const pct = Math.round((this.score / this.config.rounds) * 100);
-    showResult('peripheral_flash', this.score, `${this.score}/${this.config.rounds} caught — ${pct}% accuracy`, this.config.level);
+    const acc   = Math.round((this.caught/this.cfg.rounds)*100);
+    const passed = calcPassed(this.caught, this.cfg.rounds, this.cfg.passAccuracy);
+    showResult('peripheral_flash', this.score, this.cfg.level,
+      `${this.caught}/${this.cfg.rounds} caught — ${acc}% accuracy`, passed, acc);
   },
   cleanup() { clearTimeout(this.dotTimeout); }
 };
 
-// ─── GAME: ARROW REACTION ─────────────────────────────────────────
-const ARROWS = [
-  { dir: 'up',    emoji: '⬆️', row: 0, col: 1 },
-  { dir: 'left',  emoji: '⬅️', row: 1, col: 0 },
-  { dir: 'right', emoji: '➡️', row: 1, col: 2 },
-  { dir: 'down',  emoji: '⬇️', row: 2, col: 1 }
-];
-
+// ══════════════════════════════════════════════════════════════════
+//  GAME: ARROW REACTION  (colour + keyboard)
+// ══════════════════════════════════════════════════════════════════
 const GameArrowReaction = {
-  score: 0, hits: 0, wrong: 0, round: 0,
-  reactionTimes: [], currentArrow: null,
-  waitTimer: null, expireTimer: null,
-  config: null, arrowStart: null,
-  EXPIRE_TIME: 2500,
+  score:0, correct:0, wrong:0, round:0,
+  reactionTimes:[], cfg:null,
+  targetColour:null, currentDir:null,
+  arrowStart:null, waitTimer:null, expireTimer:null,
+  _keyHandler:null, field:null,
 
-  init(arena, difficulty) {
-    this.score = 0; this.hits = 0; this.wrong = 0; this.round = 0; this.reactionTimes = [];
-    this.config = difficulty || DIFFICULTIES.arrow_reaction[0];
+  init(arena, cfg) {
+    this.score=0; this.correct=0; this.wrong=0; this.round=0; this.reactionTimes=[];
+    this.cfg=cfg; this.currentDir=null;
+
+    // Pick starting target colour
+    this.targetColour = ARROW_COLOURS[Math.floor(Math.random()*ARROW_COLOURS.length)];
+
     arena.innerHTML = `
       <div class="game-score-bar">
         <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="ar-score">0</div></div>
-        <div class="game-score-item"><div class="game-score-label">Round</div><div class="game-score-value" id="ar-round">0 / ${this.config.rounds}</div></div>
-        <div class="game-score-item"><div class="game-score-label">Avg Reaction</div><div class="game-score-value" id="ar-avg">—</div></div>
+        <div class="game-score-item"><div class="game-score-label">Round</div><div class="game-score-value" id="ar-round">0/${cfg.rounds}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Correct</div><div class="game-score-value" id="ar-correct">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Avg RT</div><div class="game-score-value" id="ar-avg">—</div></div>
+        <div class="game-score-item"><div class="game-score-label">Need</div><div class="game-score-value" style="color:var(--gold)">${cfg.passAccuracy}%</div></div>
       </div>
       <div id="ar-field">
-        <div class="ar-arrow-display" id="ar-display">❓</div>
-        <div class="ar-buttons" id="ar-buttons"></div>
-      </div>
-    `;
-    this.display = document.getElementById('ar-display');
-    this.field   = document.getElementById('ar-field');
-    this.buildButtons();
+        <div id="ar-colour-bar">
+          <span class="ar-colour-label">Target colour:</span>
+          <span id="ar-target-swatch" class="ar-target-swatch"></span>
+          <span id="ar-target-name" class="ar-target-name"></span>
+        </div>
+        <div id="ar-arrows-wrap"></div>
+        <div id="ar-key-hint">Use ← ↑ → ↓ arrow keys on your keyboard</div>
+      </div>`;
+
+    this.field = document.getElementById('ar-field');
+    this._updateColourBar();
+
+    // Keyboard handler
+    this._keyHandler = (e)=>{
+      const dir = ARROW_DIRS.find(d=>d.key===e.key);
+      if(dir && this.currentDir) { e.preventDefault(); this.handleInput(dir.dir); }
+    };
+    document.addEventListener('keydown', this._keyHandler);
     this.scheduleNext();
   },
 
-  buildButtons() {
-    const grid = document.getElementById('ar-buttons');
-    // 3x3 grid: corners empty, arrows at N/S/E/W, centre empty
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        const btn = document.createElement('button');
-        const arrow = ARROWS.find(a => a.row === row && a.col === col);
-        if (arrow) {
-          btn.className = 'ar-btn';
-          btn.textContent = arrow.emoji;
-          btn.dataset.dir = arrow.dir;
-          btn.addEventListener('click', () => this.tap(arrow.dir, btn));
-        } else {
-          btn.className = 'ar-btn empty';
-        }
-        grid.appendChild(btn);
-      }
-    }
+  _updateColourBar() {
+    const sw = document.getElementById('ar-target-swatch');
+    const nm = document.getElementById('ar-target-name');
+    if(sw) sw.style.background = this.targetColour.hex;
+    if(nm) nm.textContent = this.targetColour.name;
   },
 
   scheduleNext() {
-    if (this.round >= this.config.rounds) { this.finish(); return; }
-    this.display.textContent = '❓';
-    this.display.className = 'ar-arrow-display';
-    this.currentArrow = null;
-    const delay = this.config.minDelay + Math.random() * (this.config.maxDelay - this.config.minDelay);
-    this.waitTimer = setTimeout(() => this.showArrow(), delay);
-  },
+    if(this.round >= this.cfg.rounds) { this.finish(); return; }
+    const wrap = document.getElementById('ar-arrows-wrap');
+    if(wrap) wrap.innerHTML = '';
+    this.currentDir = null;
 
-  showArrow() {
-    this.round++;
-    document.getElementById('ar-round').textContent = `${this.round} / ${this.config.rounds}`;
-    this.currentArrow = ARROWS[Math.floor(Math.random() * ARROWS.length)];
-    this.display.textContent = this.currentArrow.emoji;
-    this.arrowStart = Date.now();
-
-    this.expireTimer = setTimeout(() => {
-      if (this.currentArrow) {
-        this.display.classList.add('flash-wrong');
-        this.currentArrow = null;
-        setTimeout(() => this.scheduleNext(), 400);
-      }
-    }, this.EXPIRE_TIME);
-  },
-
-  tap(dir, btn) {
-    if (!this.currentArrow) return;
-    clearTimeout(this.expireTimer);
-    const rt = Date.now() - this.arrowStart;
-
-    if (dir === this.currentArrow.dir) {
-      const pts = Math.max(5, Math.round(15 - rt / 100));
-      this.score += pts;
-      this.hits++;
-      this.reactionTimes.push(rt);
-      this.display.classList.add('flash-correct');
-      btn.classList.add('correct');
-      document.getElementById('ar-score').textContent = this.score;
-      const avg = Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length);
-      document.getElementById('ar-avg').textContent = avg + 'ms';
-
-      const flash = document.createElement('div');
-      flash.className = 'ar-reaction-flash';
-      flash.style.color = 'var(--accent)';
-      flash.textContent = `+${pts}`;
-      this.field.appendChild(flash);
-      setTimeout(() => flash.remove(), 800);
-    } else {
-      this.wrong++;
-      this.score = Math.max(0, this.score - 3);
-      this.display.classList.add('flash-wrong');
-      btn.classList.add('wrong');
-      document.getElementById('ar-score').textContent = this.score;
+    // Rotate target colour every 3-5 rounds
+    if(this.round > 0 && this.round % (3 + Math.floor(Math.random()*3)) === 0) {
+      const others = ARROW_COLOURS.filter(c=>c.key!==this.targetColour.key);
+      this.targetColour = others[Math.floor(Math.random()*others.length)];
+      this._updateColourBar();
     }
 
-    this.currentArrow = null;
-    setTimeout(() => {
-      btn.classList.remove('correct', 'wrong');
-      this.scheduleNext();
-    }, 350);
+    const delay = this.cfg.minDelay + Math.random()*(this.cfg.maxDelay - this.cfg.minDelay);
+    this.waitTimer = setTimeout(()=>this.showArrows(), delay);
+  },
+
+  showArrows() {
+    this.round++;
+    document.getElementById('ar-round').textContent = `${this.round}/${this.cfg.rounds}`;
+    this.arrowStart = Date.now();
+
+    const n = this.cfg.totalArrows;
+    // Pick the target arrow direction
+    const targetDir = ARROW_DIRS[Math.floor(Math.random()*ARROW_DIRS.length)];
+    this.currentDir = targetDir.dir;
+
+    // Pick distractor colours (exclude target colour)
+    const distractorCols = ARROW_COLOURS.filter(c=>c.key!==this.targetColour.key);
+    // Build arrow list: 1 target + (n-1) distractors
+    const arrows = [{ dir:targetDir, colour:this.targetColour }];
+    for(let i=1; i<n; i++) {
+      const col = distractorCols[Math.floor(Math.random()*distractorCols.length)];
+      const dir = ARROW_DIRS[Math.floor(Math.random()*ARROW_DIRS.length)];
+      arrows.push({ dir, colour:col });
+    }
+    // Shuffle display order
+    for(let i=arrows.length-1; i>0; i--) {
+      const j=Math.floor(Math.random()*(i+1)); [arrows[i],arrows[j]]=[arrows[j],arrows[i]];
+    }
+
+    const wrap = document.getElementById('ar-arrows-wrap');
+    if(!wrap) return;
+    wrap.innerHTML = '';
+    arrows.forEach(a=>{
+      const el=document.createElement('div');
+      el.className='ar-arrow-item';
+      el.textContent=a.dir.arrow;
+      el.style.color=a.colour.hex;
+      el.style.textShadow=`0 0 12px ${a.colour.hex}88`;
+      wrap.appendChild(el);
+    });
+
+    this.expireTimer = setTimeout(()=>{
+      if(this.currentDir) {
+        this.currentDir=null;
+        this._flashArena('wrong');
+        setTimeout(()=>this.scheduleNext(), 500);
+      }
+    }, this.cfg.expireTime);
+  },
+
+  handleInput(dir) {
+    if(!this.currentDir) return;
+    clearTimeout(this.expireTimer);
+    const rt = Date.now()-this.arrowStart;
+    const isCorrect = dir===this.currentDir;
+    this.currentDir=null;
+
+    if(isCorrect) {
+      const pts=Math.max(5, Math.round(20 - rt/80));
+      this.score+=pts; this.correct++;
+      this.reactionTimes.push(rt);
+      this._flashArena('correct');
+      document.getElementById('ar-score').textContent=this.score;
+      document.getElementById('ar-correct').textContent=this.correct;
+      if(this.reactionTimes.length) {
+        const avg=Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length);
+        document.getElementById('ar-avg').textContent=avg+'ms';
+      }
+    } else {
+      this.wrong++;
+      this.score=Math.max(0,this.score-3);
+      this._flashArena('wrong');
+      document.getElementById('ar-score').textContent=this.score;
+    }
+    setTimeout(()=>this.scheduleNext(), 400);
+  },
+
+  _flashArena(type) {
+    const w=document.getElementById('ar-arrows-wrap');
+    if(!w) return;
+    w.classList.add('flash-'+type);
+    setTimeout(()=>w.classList.remove('flash-correct','flash-wrong'),300);
   },
 
   finish() {
-    const avg = this.reactionTimes.length
-      ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length) : 0;
-    showResult('arrow_reaction', this.score, `${this.hits}/${this.config.rounds} correct · avg reaction ${avg}ms`, this.config.level);
+    const acc    = Math.round((this.correct/this.cfg.rounds)*100);
+    const avgRt  = this.reactionTimes.length ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length) : 0;
+    const passed = calcPassed(this.correct, this.cfg.rounds, this.cfg.passAccuracy);
+    showResult('arrow_reaction', this.score, this.cfg.level,
+      `${this.correct}/${this.cfg.rounds} correct — ${acc}% · avg ${avgRt}ms`, passed, acc);
   },
-  cleanup() { clearTimeout(this.waitTimer); clearTimeout(this.expireTimer); }
+
+  cleanup() {
+    clearTimeout(this.waitTimer); clearTimeout(this.expireTimer);
+    if(this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
+  }
 };
 
-// ─── GAME: NUMBER SCATTER ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+//  GAME: NUMBER SCATTER
+// ══════════════════════════════════════════════════════════════════
 const GameNumberScatter = {
-  score: 0, current: 0, sequence: [], times: [], mistakes: 0,
-  config: null, startTime: null,
+  score:0, current:0, sequence:[], mistakes:0,
+  times:[], startTime:null, cfg:null, field:null,
+  timerInterval:null, elapsed:0,
 
-  init(arena, difficulty) {
-    this.score = 0; this.current = 0; this.times = []; this.mistakes = 0;
-    this.config = difficulty || DIFFICULTIES.number_scatter[0];
+  init(arena, cfg) {
+    this.score=0; this.current=0; this.mistakes=0; this.times=[];
+    this.cfg=cfg; this.elapsed=0;
 
-    // Build sequence
-    const nums = Array.from({length: this.config.count}, (_, i) => i + 1);
-    if (!this.config.ordered) {
-      // Shuffle for random order mode
-      for (let i = nums.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [nums[i], nums[j]] = [nums[j], nums[i]];
-      }
-    }
-    this.sequence = nums;
+    // Generate number pool: mix of 1, 2, and possibly 3-digit numbers
+    const pool = this._buildPool(cfg.count, cfg.maxDigit);
+    // Sequence to find: either sorted ascending or random order
+    this.sequence = cfg.ordered
+      ? [...pool].sort((a,b)=>a-b)
+      : this._shuffle([...pool]);
 
-    const targetLabel = this.config.ordered
-      ? `Find 1 → ${this.config.count} in order`
-      : `Find numbers in this order: ${nums.slice(0,5).join(' → ')}...`;
-
+    const first = this.sequence[0];
     arena.innerHTML = `
       <div class="game-score-bar">
         <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="ns-score">0</div></div>
-        <div class="game-score-item"><div class="game-score-label">Next</div><div class="game-score-value" id="ns-target" style="color:var(--accent)">${nums[0]}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Find Next</div><div class="game-score-value" id="ns-target" style="color:var(--accent)">${first}</div></div>
+        <div class="game-score-item"><div class="game-score-label">Progress</div><div class="game-score-value" id="ns-progress">0/${cfg.count}</div></div>
         <div class="game-score-item"><div class="game-score-label">Mistakes</div><div class="game-score-value" id="ns-mistakes">0</div></div>
+        <div class="game-score-item"><div class="game-score-label">Time Left</div><div class="game-score-value" id="ns-timeleft">${cfg.timeLimit}s</div></div>
       </div>
       <div id="ns-field">
-        <div class="ns-prompt">Find: <strong id="ns-prompt-num">${nums[0]}</strong></div>
-      </div>
-    `;
+        <div class="ns-prompt">Find: <strong id="ns-prompt-num">${first}</strong></div>
+      </div>`;
+
     this.field = document.getElementById('ns-field');
     this.startTime = Date.now();
     this.scatter();
+
+    // Countdown timer
+    this.timerInterval = setInterval(()=>{
+      this.elapsed++;
+      const left = this.cfg.timeLimit - this.elapsed;
+      const el = document.getElementById('ns-timeleft');
+      if(el) { el.textContent=Math.max(0,left)+'s'; if(left<=10) el.style.color='var(--warn)'; }
+      if(left<=0) { clearInterval(this.timerInterval); this.finish(true); }
+    },1000);
+  },
+
+  _buildPool(count, maxDigit) {
+    const pool=new Set();
+    while(pool.size < count) {
+      let n;
+      if(maxDigit===2) {
+        n = Math.random()<0.4 ? (1+Math.floor(Math.random()*9)) : (10+Math.floor(Math.random()*90));
+      } else {
+        const r=Math.random();
+        if(r<0.2) n=1+Math.floor(Math.random()*9);
+        else if(r<0.6) n=10+Math.floor(Math.random()*90);
+        else n=100+Math.floor(Math.random()*900);
+      }
+      pool.add(n);
+    }
+    return [...pool];
+  },
+
+  _shuffle(arr) {
+    for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+    return arr;
   },
 
   scatter() {
-    // Place all numbers from sequence scattered randomly
-    const displayNums = [...this.sequence];
-    // Shuffle display positions
-    for (let i = displayNums.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [displayNums[i], displayNums[j]] = [displayNums[j], displayNums[i]];
-    }
-
-    const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
-    const placed = [];
-
-    displayNums.forEach(n => {
-      let x, y, attempts = 0, ok = false;
-      while (!ok && attempts < 60) {
-        x = 40 + Math.random() * (fw - 80);
-        y = 50 + Math.random() * (fh - 80);
-        ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 52);
-        attempts++;
+    // Display numbers in random positions (display order ≠ find order)
+    const display = this._shuffle([...this.sequence]);
+    const fw=this.field.offsetWidth, fh=this.field.offsetHeight;
+    const placed=[];
+    display.forEach(n=>{
+      let x,y,ok=false,att=0;
+      while(!ok && att<80) {
+        x=45+Math.random()*(fw-90); y=55+Math.random()*(fh-80);
+        ok=placed.every(p=>Math.hypot(p.x-x,p.y-y)>58); att++;
       }
-      placed.push({x, y});
-
-      const el = document.createElement('div');
-      el.className = 'ns-number';
-      el.textContent = n;
-      el.dataset.num = n;
-      el.style.left = x + 'px';
-      el.style.top = y + 'px';
-      el.addEventListener('click', () => this.tap(n, el));
+      placed.push({x,y});
+      const el=document.createElement('div');
+      el.className='ns-number'; el.textContent=n; el.dataset.num=n;
+      el.style.left=x+'px'; el.style.top=y+'px';
+      el.addEventListener('click',()=>this.tap(n,el));
       this.field.appendChild(el);
     });
   },
 
-  tap(n, el) {
-    const target = this.sequence[this.current];
-    if (n === target) {
-      el.classList.add('correct');
-      el.style.pointerEvents = 'none';
-      this.score += 10;
-      this.times.push(Date.now() - this.startTime);
-      this.startTime = Date.now();
-      document.getElementById('ns-score').textContent = this.score;
+  tap(n,el) {
+    if(n===this.sequence[this.current]) {
+      el.classList.add('correct'); el.style.pointerEvents='none';
+      this.score+=10;
+      this.times.push(Date.now()-this.startTime); this.startTime=Date.now();
       this.current++;
-      if (this.current >= this.sequence.length) { this.finish(); return; }
-      const next = this.sequence[this.current];
-      document.getElementById('ns-target').textContent = next;
-      document.getElementById('ns-prompt-num').textContent = next;
+      document.getElementById('ns-score').textContent=this.score;
+      document.getElementById('ns-progress').textContent=`${this.current}/${this.cfg.count}`;
+      if(this.current>=this.sequence.length){ this.finish(false); return; }
+      const next=this.sequence[this.current];
+      document.getElementById('ns-target').textContent=next;
+      document.getElementById('ns-prompt-num').textContent=next;
     } else {
-      el.classList.add('wrong');
-      this.mistakes++;
-      this.score = Math.max(0, this.score - 3);
-      document.getElementById('ns-score').textContent = this.score;
-      document.getElementById('ns-mistakes').textContent = this.mistakes;
-      setTimeout(() => el.classList.remove('wrong'), 300);
+      el.classList.add('wrong'); this.mistakes++;
+      this.score=Math.max(0,this.score-3);
+      document.getElementById('ns-score').textContent=this.score;
+      document.getElementById('ns-mistakes').textContent=this.mistakes;
+      setTimeout(()=>el.classList.remove('wrong'),300);
     }
   },
 
-  finish() {
-    const avg = this.times.length
-      ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length) : 0;
-    const mode = this.config.ordered ? 'ordered' : 'random order';
-    showResult('number_scatter', this.score,
-      `All ${this.config.count} found (${mode}) · avg ${avg}ms · ${this.mistakes} mistake${this.mistakes !== 1 ? 's' : ''}`,
-      this.config.level);
+  finish(timeout) {
+    clearInterval(this.timerInterval);
+    const found  = this.current;
+    const acc    = Math.round((found/this.cfg.count)*100);
+    const passed = !timeout && calcPassed(found, this.cfg.count, this.cfg.passAccuracy);
+    const avg    = this.times.length ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length) : 0;
+    const detail = timeout
+      ? `Time's up! ${found}/${this.cfg.count} found — ${acc}%`
+      : `All ${this.cfg.count} found · ${acc}% · avg ${avg}ms · ${this.mistakes} mistake${this.mistakes!==1?'s':''}`;
+    showResult('number_scatter', this.score, this.cfg.level, detail, passed, acc);
   },
-  cleanup() {}
+  cleanup() { clearInterval(this.timerInterval); }
 };
