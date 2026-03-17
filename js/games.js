@@ -50,14 +50,14 @@ const GamePeripheralFlash = {
         <div class="game-score-item"><div class="game-score-label">Need</div><div class="game-score-value" style="color:var(--gold)">${cfg.passAccuracy}%</div></div>
       </div>
       <div id="pf-field"><div class="pf-center"></div></div>`;
-    this.field = document.getElementById('pf-field');
+    this.field = ementById('pf-field');
     this.nextDot();
   },
 
   nextDot() {
     if (this.round >= this.cfg.rounds) { this.finish(); return; }
     this.round++;
-    document.getElementById('pf-round').textContent = `${this.round}/${this.cfg.rounds}`;
+    ementById('pf-round').textContent = `${this.round}/${this.cfg.rounds}`;
 
     const fw=this.field.offsetWidth, fh=this.field.offsetHeight;
     const cx=fw/2, cy=fh/2, minD=Math.min(fw,fh)*0.22;
@@ -77,14 +77,14 @@ const GamePeripheralFlash = {
       if(dot.classList.contains('pf-missed')) return;
       clearTimeout(this.dotTimeout);
       this.caught++; this.score+=10;
-      document.getElementById('pf-caught').textContent=this.caught;
+      ementById('pf-caught').textContent=this.caught;
       dot.style.background='var(--accent)'; dot.style.boxShadow='0 0 16px var(--accent)';
       setTimeout(()=>{ dot.remove(); this.nextDot(); },150);
     });
 
     this.dotTimeout = setTimeout(()=>{
       dot.classList.add('pf-missed'); this.missed++;
-      document.getElementById('pf-missed').textContent=this.missed;
+      ementById('pf-missed').textContent=this.missed;
       setTimeout(()=>{ dot.remove(); this.nextDot(); },300);
     }, this.cfg.dotLifetime);
   },
@@ -133,7 +133,7 @@ const GameArrowReaction = {
         <div id="ar-key-hint">Use ← ↑ → ↓ arrow keys on your keyboard</div>
       </div>`;
 
-    this.field = document.getElementById('ar-field');
+    this.field = ementById('ar-field');
     this._updateColourBar();
 
     // Keyboard handler
@@ -155,7 +155,12 @@ const GameArrowReaction = {
   scheduleNext() {
     if(this.round >= this.cfg.rounds) { this.finish(); return; }
     const wrap = document.getElementById('ar-arrows-wrap');
-    if(wrap) wrap.innerHTML = '';
+if(wrap) wrap.innerHTML = '';
+// Clear any scattered arrows from previous round
+if(this._scatteredEls) {
+  this._scatteredEls.forEach(el=>el.remove());
+  this._scatteredEls = [];
+}
     this.currentDir = null;
 
     // Rotate target colour every 3-5 rounds
