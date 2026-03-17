@@ -80,23 +80,17 @@ const Auth = {
     if (!u.bests[bk] || data.score > u.bests[bk]) u.bests[bk] = data.score;
     if (!u.bests[data.exercise] || data.score > u.bests[data.exercise]) u.bests[data.exercise] = data.score;
 
-    // ── consecutive pass check ──
+        // ── consecutive pass check ──
     let levelUp = null;
     const exId     = data.exercise;
     const curLevel = u.levels[exId] || 1;
-    const cfg      = getLevel(exId, curLevel);
 
     if (data.passed) {
       u.consecutive[exId] = (u.consecutive[exId] || 0) + 1;
-      if (u.consecutive[exId] >= 3) {
-        // Check stage gate: can they advance?
-        const nextLevel = curLevel + 1;
-        const accessible = maxAccessibleLevel(u.levels);
-        if (nextLevel <= accessible && nextLevel <= MAX_LEVEL) {
-          u.levels[exId]      = nextLevel;
-          u.consecutive[exId] = 0;
-          levelUp = { exercise: exId, newLevel: nextLevel };
-        }
+      if (u.consecutive[exId] >= 3 && curLevel < MAX_LEVEL) {
+        u.levels[exId]      = curLevel + 1;
+        u.consecutive[exId] = 0;
+        levelUp = { exercise: exId, newLevel: curLevel + 1 };
       }
     } else {
       u.consecutive[exId] = 0;
