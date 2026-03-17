@@ -1,545 +1,496 @@
-// ─── APP CONTROLLER ───────────────────────────────────────────────
+// ─── APP ──────────────────────────────────────────────────────────
 let currentGame = null;
-let currentExerciseId = null;
-let currentDifficultyLevel = 1;
 
+// ── Page routing ─────────────────────────────────────────────────
 function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const p = document.getElementById('page-' + id);
-  if (p) p.classList.add('active');
-  const nav = document.getElementById('nav');
-  if (id === 'login') { nav.classList.remove('visible'); }
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const p=document.getElementById('page-'+id);
+  if(p) p.classList.add('active');
+  const nav=document.getElementById('nav');
+  if(id==='login'||id==='admin') nav.classList.remove('visible');
   else {
     nav.classList.add('visible');
-    document.querySelectorAll('.nav-link').forEach(l => {
-      l.classList.toggle('active', l.dataset.page === id);
-    });
+    document.querySelectorAll('.nav-link').forEach(l=>l.classList.toggle('active',l.dataset.page===id));
   }
 }
 
 function showSessionOver() {
   Timer.stop();
-  if (currentGame) { currentGame.cleanup(); currentGame = null; }
+  if(currentGame){currentGame.cleanup();currentGame=null;}
   document.getElementById('session-over').classList.add('show');
 }
 
-function showUnlockToast(label) {
-  const toast = document.getElementById('unlock-toast');
-  toast.textContent = `🔓 Unlocked: ${label}!`;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3500);
+// ── Toast ─────────────────────────────────────────────────────────
+function toast(msg, colour) {
+  const t=document.getElementById('unlock-toast');
+  t.textContent=msg; t.style.borderColor=colour||'var(--gold)'; t.style.color=colour||'var(--gold)';
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3500);
 }
 
-function showResult(exId, score, detail, level) {
-  if (currentGame) { currentGame.cleanup(); }
+// ── Result screen ─────────────────────────────────────────────────
+function showResult(exId, score, level, detail, passed, accuracy) {
+  if(currentGame) currentGame.cleanup();
   const duration = Timer.exerciseDuration();
+  const levelUp  = Auth.saveSession({exercise:exId, score, level, detail, passed, accuracy, duration, ts:Date.now()});
 
-  const unlocked = Auth.saveSession({ exercise: exId, score, detail, duration, level: level || 1, ts: Date.now() });
-
-  if (unlocked) {
-    const ex = EXERCISES.find(e => e.id === unlocked.exercise);
-    setTimeout(() => showUnlockToast(`${ex ? ex.name : unlocked.exercise} — ${unlocked.label}`), 600);
+  if(levelUp) {
+    const ex=EXERCISES.find(e=>e.id===levelUp.exercise);
+    setTimeout(()=>toast(`🔓 Level up! ${ex?ex.name:''} → Level ${levelUp.newLevel}`),600);
   }
 
-  const arena = document.getElementById('game-arena');
-  const best = Auth.getBest(exId, level);
-  const isNew = best === score && score > 0;
+  const consecutive = Auth.getConsecutive(exId);
+  const best        = Auth.getBest(exId, level);
+  const isNew       = best===score && score>0;
+  const cfg         = getLevel(exId, level);
+  const maxAcc      = Auth.getMaxAccessible();
+  const userLevel   = Auth.getUserLevel(exId);
 
-  // Unlock hint for next level
-  const diffs = DIFFICULTIES[exId];
-  const currentDiff = diffs ? diffs.find(d => d.level === (level || 1)) : null;
-  const unlockedLevel = Auth.getUnlockedLevel(exId);
-  let unlockHint = '';
-  if (currentDiff && currentDiff.unlock_score && unlockedLevel === (level || 1)) {
-    const need = currentDiff.unlock_score - score;
-    if (need > 0) {
-      unlockHint = `<div class="result-detail" style="color:var(--gold)">Score ${need} more to unlock ${diffs[(level||1)].label} difficulty!</div>`;
-    }
-  }
+  // Progress ring (consecutive passes out of 3)
+  const ringPct = Math.round((consecutive/3)*100);
+  const ring    = `<div class="consec-ring" title="${consecutive}/3 consecutive passes">
+    <svg viewBox="0 0 44 44" width="44" height="44">
+      <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border)" stroke-width="4"/>
+      <circle cx="22" cy="22" r="18" fill="none" stroke="${passed?'var(--accent)':'var(--warn)'}"
+        stroke-width="4" stroke-dasharray="${2*Math.PI*18}"
+        stroke-dashoffset="${2*Math.PI*18*(1-ringPct/100)}"
+        stroke-linecap="round" transform="rotate(-90 22 22)"/>
+      <text x="22" y="27" text-anchor="middle" font-size="13" font-weight="700"
+        fill="${passed?'var(--accent)':'var(--warn)'}">${consecutive}/3</text>
+    </svg>
+    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem">passes</div>
+  </div>`;
 
-  arena.innerHTML = `
+  const passMsg = passed
+    ? (consecutive>=3 && levelUp ? '✅ Level cleared!' : `✅ Pass ${consecutive}/3 — keep going!`)
+    : `❌ ${accuracy}% — need ${cfg?cfg.passAccuracy:0}% to pass`;
+
+  const arena=document.getElementById('game-arena');
+  arena.innerHTML=`
     <div class="result-panel">
-      <h2>${isNew ? '🏆 NEW BEST' : 'Round Complete'}</h2>
-      <div class="result-score">${score}</div>
-      <div class="result-detail">${detail}</div>
-      ${best ? `<div class="result-detail" style="color:var(--text-muted)">Personal best (Level ${level||1}): ${best}</div>` : ''}
-      ${unlockHint}
-      <div class="result-actions">
-        <button class="btn-primary btn-start" onclick="startExercise('${exId}', ${level||1})">Play Again</button>
-        <button class="btn-secondary" onclick="goToDashboard()">Dashboard</button>
+      <div style="display:flex;align-items:center;justify-content:center;gap:1.5rem;margin-bottom:0.5rem">
+        <div>
+          <h2>${isNew?'🏆 NEW BEST':'Round Complete'}</h2>
+          <div class="result-score">${score}</div>
+        </div>
+        ${ring}
       </div>
-    </div>
-  `;
+      <div class="result-detail">${detail}</div>
+      <div class="result-detail" style="color:${passed?'var(--accent)':'var(--warn)'};font-weight:600">${passMsg}</div>
+      ${best?`<div class="result-detail" style="color:var(--text-muted)">Best at Level ${level}: ${best}</div>`:''}
+      <div class="result-actions">
+        <button class="btn-primary" onclick="launchLevel('${exId}',${level})">Play Again</button>
+        <button class="btn-secondary" onclick="goToDashboard()">Dashboard</button>
+        ${userLevel<maxAcc?`<button class="btn-secondary" onclick="openLevelPicker('${exId}')">Change Level</button>`:''}
+      </div>
+    </div>`;
 }
 
 function goToDashboard() {
-  if (currentGame) { currentGame.cleanup(); currentGame = null; }
-  showPage('dashboard');
-  renderDashboard();
+  if(currentGame){currentGame.cleanup();currentGame=null;}
+  showPage('dashboard'); renderDashboard();
 }
 
-// ─── DIFFICULTY SELECTOR ──────────────────────────────────────────
-function startExercise(id, level) {
-  const ex = EXERCISES.find(e => e.id === id);
-  if (!ex || ex.locked) return;
-
-  const diffs = DIFFICULTIES[id];
-  const unlockedLevel = Auth.getUnlockedLevel(id);
-
-  // If multiple levels available, show selector first
-  if (diffs && unlockedLevel > 1 && !level) {
-    showDifficultySelector(id, ex, diffs, unlockedLevel);
-    return;
-  }
-
-  launchWithLevel(id, ex, level || 1);
-}
-
-function showDifficultySelector(id, ex, diffs, unlockedLevel) {
+// ── Level picker ──────────────────────────────────────────────────
+function openLevelPicker(exId) {
+  const ex       = EXERCISES.find(e=>e.id===exId);
+  const maxAcc   = Auth.getMaxAccessible();
+  const curLevel = Auth.getUserLevel(exId);
   showPage('exercise');
-  document.getElementById('ex-page-title').textContent = ex.name;
-  const arena = document.getElementById('game-arena');
+  document.getElementById('ex-page-title').textContent=ex.name;
+  const arena=document.getElementById('game-arena');
 
-  const buttons = diffs.map(d => {
-    const isLocked = d.level > unlockedLevel;
-    const cls = isLocked ? 'diff-locked' : (d.level === 1 ? 'diff-easy' : d.level === 2 ? 'diff-medium' : 'diff-hard');
-    return `<button
-      class="btn-secondary"
-      style="min-width:160px;${isLocked ? 'opacity:0.4;cursor:not-allowed' : ''}"
-      ${isLocked ? 'disabled' : `onclick="launchWithLevel('${id}', null, ${d.level})"`}>
-      <span class="diff-badge ${cls}">${d.label}</span>
-      <div style="margin-top:0.4rem;font-size:0.75rem;color:var(--text-muted)">${
-        d.level === 1 ? 'Starter speed' : d.level === 2 ? 'Faster targets' : 'Maximum speed'
-      }</div>
-      ${isLocked ? `<div class="unlock-hint">Score ${diffs[d.level-2].unlock_score}+ on ${diffs[d.level-2].label} to unlock</div>` : ''}
-    </button>`;
-  }).join('');
+  // Build stage rows
+  let html='<div class="level-picker">';
+  html+=`<p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.5rem">You are on Level <strong style="color:var(--accent)">${curLevel}</strong>. Max accessible: <strong style="color:var(--gold)">${maxAcc}</strong></p>`;
 
-  arena.innerHTML = `
-    <div class="start-prompt">
-      <div style="font-size:3rem;margin-bottom:1rem">${ex.icon}</div>
-      <h2>${ex.name}</h2>
-      <p>${ex.desc}</p>
-      <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem">${buttons}</div>
-    </div>
-  `;
+  for(let stage=1; stage<=8; stage++) {
+    const stageStart=(stage-1)*STAGE_SIZE+1;
+    const stageEnd=stage*STAGE_SIZE;
+    const stageUnlocked=stageStart<=maxAcc;
+    html+=`<div class="level-stage${stageUnlocked?'':' locked'}">
+      <div class="level-stage-title">Stage ${stage} — Levels ${stageStart}–${stageEnd}${stageUnlocked?'':'  🔒'}</div>
+      <div class="level-stage-grid">`;
+    for(let lvl=stageStart;lvl<=stageEnd;lvl++) {
+      const locked=lvl>maxAcc;
+      const isCur=lvl===curLevel;
+      const cfg=getLevel(exId,lvl);
+      html+=`<button class="level-btn${locked?' locked':''}${isCur?' current':''}"
+        ${locked?'disabled':''}
+        onclick="launchLevel('${exId}',${lvl})"
+        title="${cfg?cfg.label+' · '+cfg.passAccuracy+'% to pass':''}"
+        style="--lc:${levelColour(lvl)}">
+        <span class="level-num">${lvl}</span>
+        <span class="level-label">${cfg?cfg.label:''}</span>
+      </button>`;
+    }
+    html+='</div></div>';
+  }
+  html+='</div>';
+  arena.innerHTML=`
+    <div style="width:100%;overflow-y:auto;max-height:calc(100vh - 200px)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <div class="ex-page-title">${ex.icon} ${ex.name} — Choose Level</div>
+        <button class="btn-back" onclick="goToDashboard()">← Back</button>
+      </div>
+      ${html}
+    </div>`;
 }
 
-function launchWithLevel(id, ex, level) {
-  if (!ex) ex = EXERCISES.find(e => e.id === id);
-  currentExerciseId = id;
-  currentDifficultyLevel = level;
-  document.getElementById('ex-page-title').textContent = ex.name;
-
-  const diffs = DIFFICULTIES[id];
-  const diff = diffs ? diffs.find(d => d.level === level) : null;
-
-  const arena = document.getElementById('game-arena');
-  arena.innerHTML = `
-    <div id="countdown-overlay" class="show">
-      <span id="countdown-num">3</span>
-      <button id="countdown-pause-btn" onclick="Timer.toggle()">⏸ Pause Session</button>
-    </div>
-  `;
-
+function launchLevel(exId, level) {
+  const ex  = EXERCISES.find(e=>e.id===exId);
+  const cfg = getLevel(exId, level);
+  if(!cfg) return;
+  document.getElementById('ex-page-title').textContent=`${ex.name} — Level ${level}`;
+  const arena=document.getElementById('game-arena');
   showPage('exercise');
   Timer.markExerciseStart();
-  if (!Timer.running) Timer.start();
+  if(!Timer.running) Timer.start();
 
-  let count = 3;
-  const numEl = document.getElementById('countdown-num');
+  // Countdown
+  arena.innerHTML=`<div id="countdown-overlay" class="show">
+    <div id="cd-level" style="font-size:1rem;font-weight:700;color:var(--gold);letter-spacing:0.1em;margin-bottom:0.5rem">
+      LEVEL ${level} · ${cfg.label.toUpperCase()} · ${cfg.passAccuracy}% NEEDED
+    </div>
+    <span id="countdown-num">3</span>
+    <button id="countdown-pause-btn" onclick="Timer.toggle()">⏸ Pause</button>
+  </div>`;
 
-  const tick = setInterval(() => {
-    if (Timer.paused) return;
+  let count=3;
+  const numEl=document.getElementById('countdown-num');
+  const tick=setInterval(()=>{
+    if(Timer.paused) return;
     count--;
-    if (count <= 0) {
+    if(count<=0){
       clearInterval(tick);
       document.getElementById('countdown-overlay').classList.remove('show');
-      actuallyLaunch(id, arena, diff);
+      _launchGame(exId, arena, cfg);
     } else {
-      numEl.textContent = count;
-      numEl.style.animation = 'none';
-      requestAnimationFrame(() => { numEl.style.animation = 'countPop 0.8s ease'; });
+      numEl.textContent=count;
+      numEl.style.animation='none';
+      requestAnimationFrame(()=>{ numEl.style.animation='countPop 0.8s ease'; });
     }
-  }, 800);
+  },800);
 }
 
-function actuallyLaunch(id, arena, diff) {
-  switch (id) {
-    case 'peripheral_flash': currentGame = GamePeripheralFlash; break;
-    case 'arrow_reaction':   currentGame = GameArrowReaction;   break;
-    case 'number_scatter':   currentGame = GameNumberScatter;   break;
+function _launchGame(exId, arena, cfg) {
+  switch(exId){
+    case 'peripheral_flash': currentGame=GamePeripheralFlash; break;
+    case 'arrow_reaction':   currentGame=GameArrowReaction;   break;
+    case 'number_scatter':   currentGame=GameNumberScatter;   break;
   }
-  if (currentGame) currentGame.init(arena, diff);
+  if(currentGame) currentGame.init(arena,cfg);
 }
 
-// ─── DASHBOARD RENDER ─────────────────────────────────────────────
+// ─── DASHBOARD ────────────────────────────────────────────────────
 function renderDashboard() {
-  const user = Auth.currentUser();
-  if (!user) return;
+  const user=Auth.currentUser(); if(!user) return;
+  document.getElementById('dash-name').textContent=user.username;
+  document.getElementById('dash-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
-  document.getElementById('dash-name').textContent = user.username;
-  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  });
+  const todaySecs=Auth.getTodaySeconds();
+  document.getElementById('stat-today').textContent=Math.floor(todaySecs/60);
+  document.getElementById('stat-streak').textContent=Auth.getStreakDays();
+  document.getElementById('stat-sessions').textContent=user.sessions.length;
 
-  const todaySecs = Auth.getTodaySeconds();
-  document.getElementById('stat-today').textContent = Math.floor(todaySecs / 60);
-  document.getElementById('stat-streak').textContent = Auth.getStreakDays();
-  document.getElementById('stat-sessions').textContent = user.sessions.length;
-
-  const pct = Math.min(100, (todaySecs / 600) * 100);
-  document.getElementById('session-progress').style.width = pct + '%';
-  document.getElementById('progress-used').textContent = `${Math.floor(todaySecs/60)}m ${todaySecs%60}s used`;
-  document.getElementById('progress-left').textContent = `${Math.floor(Math.max(0,600-todaySecs)/60)}m ${Math.max(0,600-todaySecs)%60}s left today`;
-
+  const pct=Math.min(100,(todaySecs/600)*100);
+  document.getElementById('session-progress').style.width=pct+'%';
+  document.getElementById('progress-used').textContent=`${Math.floor(todaySecs/60)}m ${todaySecs%60}s used`;
+  document.getElementById('progress-left').textContent=`${Math.floor(Math.max(0,600-todaySecs)/60)}m ${Math.max(0,600-todaySecs)%60}s left today`;
   Timer.render();
 
-  // Exercise grid
-  const grid = document.getElementById('exercise-grid');
-  grid.innerHTML = '';
-  EXERCISES.forEach(ex => {
-    const best = Auth.getBest(ex.id);
-    const unlockedLevel = Auth.getUnlockedLevel(ex.id);
-    const diffs = DIFFICULTIES[ex.id];
-    const card = document.createElement('div');
-    card.className = 'ex-card' + (ex.locked ? ' locked' : '');
-
-    let diffBadges = '';
-    let unlockHint = '';
-    if (diffs && !ex.locked) {
-      diffBadges = diffs.map(d => {
-        const isUnlocked = d.level <= unlockedLevel;
-        const cls = !isUnlocked ? 'diff-locked' : (d.level===1?'diff-easy':d.level===2?'diff-medium':'diff-hard');
-        return `<span class="diff-badge ${cls}">${isUnlocked ? d.label : '🔒'}</span>`;
-      }).join('');
-      if (unlockedLevel < diffs.length) {
-        const next = diffs[unlockedLevel - 1];
-        unlockHint = `<div class="unlock-hint">Score ${next.unlock_score}+ to unlock ${diffs[unlockedLevel].label}</div>`;
-      }
-    }
-
-    card.innerHTML = `
+  const maxAcc=Auth.getMaxAccessible();
+  const grid=document.getElementById('exercise-grid'); grid.innerHTML='';
+  EXERCISES.forEach(ex=>{
+    const best=Auth.getBest(ex.id);
+    const lvl=Auth.getUserLevel(ex.id);
+    const cfg=getLevel(ex.id,lvl);
+    const consec=Auth.getConsecutive(ex.id);
+    const card=document.createElement('div');
+    card.className='ex-card'+(ex.locked?' locked':'');
+    const stageLabel=cfg?`Level ${lvl} · ${cfg.label}`:'';
+    const consecBar=ex.locked?'':
+      `<div class="consec-bar" title="${consec}/3 consecutive passes needed">
+        ${[0,1,2].map(i=>`<div class="consec-pip${consec>i?' done':''}"></div>`).join('')}
+        <span style="font-size:0.65rem;color:var(--text-muted)">${consec}/3</span>
+      </div>`;
+    card.innerHTML=`
       <div class="ex-icon">${ex.icon}</div>
       <div class="ex-name">${ex.name}</div>
       <div class="ex-desc">${ex.desc}</div>
       <div class="ex-meta">
-        ${diffBadges}
-        ${best ? `<span class="ex-best">Best: <span>${best}</span></span>` : ''}
+        ${ex.locked?'<span style="color:var(--text-muted);font-size:0.75rem">Coming soon</span>':`
+          <span class="diff-badge" style="color:${cfg?levelColour(lvl):'var(--text-muted)'};border-color:${cfg?levelColour(lvl)+'55':'var(--border)'}">
+            ${stageLabel}
+          </span>
+          ${best?`<span class="ex-best">Best: <span>${best}</span></span>`:''}
+        `}
       </div>
-      ${unlockHint}
-      ${ex.locked ? '<div class="unlock-hint">— Coming soon</div>' : ''}
-    `;
-    if (!ex.locked) card.addEventListener('click', () => startExercise(ex.id));
+      ${consecBar}`;
+    if(!ex.locked) card.addEventListener('click',()=>openLevelPicker(ex.id));
     grid.appendChild(card);
   });
 
-  // History table
-  const history = Auth.getHistory().slice(0, 8);
-  const tbody = document.getElementById('history-tbody');
-  if (!history.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:1rem">No sessions yet — pick an exercise above!</td></tr>`;
+  // History
+  const history=Auth.getHistory(8);
+  const tbody=document.getElementById('history-tbody');
+  if(!history.length) {
+    tbody.innerHTML=`<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem">No sessions yet — pick an exercise above!</td></tr>`;
   } else {
-    tbody.innerHTML = history.map(s => {
-      const ex = EXERCISES.find(e => e.id === s.exercise);
-      const date = new Date(s.ts).toLocaleDateString('en-GB', {day:'numeric',month:'short'});
-      const time = new Date(s.ts).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
-      const lvl = s.level ? `L${s.level}` : '';
+    tbody.innerHTML=history.map(s=>{
+      const ex=EXERCISES.find(e=>e.id===s.exercise);
+      const dt=new Date(s.ts);
       return `<tr>
-        <td>${date} ${time}</td>
-        <td>${ex ? ex.icon + ' ' + ex.name : s.exercise} ${lvl ? `<span style="color:var(--text-muted);font-size:0.72rem">${lvl}</span>` : ''}</td>
+        <td>${dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${ex?ex.icon+' '+ex.name:s.exercise}</td>
+        <td><span class="diff-badge" style="color:${levelColour(s.level||1)};border-color:${levelColour(s.level||1)+'44'}">L${s.level||1}</span></td>
         <td class="score">${s.score}</td>
-        <td style="color:var(--text-muted)">${s.detail || ''}</td>
+        <td style="color:${s.passed?'var(--accent)':'var(--warn)'}">${s.passed?'✓ Pass':'✗ Fail'}</td>
       </tr>`;
     }).join('');
   }
 }
 
 // ─── PROGRESS PAGE ────────────────────────────────────────────────
-let progressFilter = 'peripheral_flash';
-
+let progressFilter='peripheral_flash';
 function renderProgress() {
-  const history = Auth.getHistory();
-  const exIds = ['peripheral_flash', 'arrow_reaction', 'number_scatter'];
-
-  // Filter buttons
-  const filterWrap = document.getElementById('progress-filter');
-  filterWrap.innerHTML = exIds.map(id => {
-    const ex = EXERCISES.find(e => e.id === id);
+  const exIds=['peripheral_flash','arrow_reaction','number_scatter'];
+  document.getElementById('progress-filter').innerHTML=exIds.map(id=>{
+    const ex=EXERCISES.find(e=>e.id===id);
     return `<button class="ex-filter-btn${progressFilter===id?' active':''}" onclick="setProgressFilter('${id}')">${ex.icon} ${ex.name}</button>`;
   }).join('');
-
-  renderScoreChart(history);
-  renderReactionChart(history);
-  renderDailyChart(history);
+  const history=Auth.getHistory();
+  _renderScoreChart(history); _renderAccChart(history); _renderDailyChart(history);
 }
+function setProgressFilter(id){ progressFilter=id; renderProgress(); }
 
-function setProgressFilter(id) {
-  progressFilter = id;
-  renderProgress();
-}
+function _svgWrap(content,w,h){ return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${content}</svg>`; }
 
-function renderScoreChart(history) {
-  const wrap = document.getElementById('chart-scores');
-  const data = history.filter(s => s.exercise === progressFilter).slice(0, 20).reverse();
-
-  if (data.length < 2) {
-    wrap.innerHTML = '<div class="chart-empty">Play at least 2 sessions to see your score trend.</div>';
-    return;
-  }
-
-  const W = wrap.offsetWidth || 500, H = 180;
-  const pad = { top: 20, right: 20, bottom: 40, left: 45 };
-  const scores = data.map(s => s.score);
-  const maxS = Math.max(...scores), minS = Math.max(0, Math.min(...scores) - 5);
-
-  const sx = (i) => pad.left + i * (W - pad.left - pad.right) / (data.length - 1);
-  const sy = (v) => pad.top + (1 - (v - minS) / (maxS - minS + 1)) * (H - pad.top - pad.bottom);
-
-  const pts = data.map((d, i) => `${sx(i)},${sy(d.score)}`).join(' ');
-  const areaPts = `${sx(0)},${H - pad.bottom} ${pts} ${sx(data.length-1)},${H - pad.bottom}`;
-
-  const labels = data.map((d, i) => {
-    if (i % Math.ceil(data.length / 6) !== 0 && i !== data.length - 1) return '';
-    const dt = new Date(d.ts);
-    return `<text class="chart-label" x="${sx(i)}" y="${H - 10}" text-anchor="middle">${dt.getDate()}/${dt.getMonth()+1}</text>`;
+function _renderScoreChart(history){
+  const wrap=document.getElementById('chart-scores');
+  const data=history.filter(s=>s.exercise===progressFilter).slice(0,30).reverse();
+  if(data.length<2){ wrap.innerHTML='<div class="chart-empty">Play at least 2 sessions to see score trend.</div>'; return; }
+  const W=wrap.offsetWidth||600,H=180,pad={t:20,r:20,b:40,l:45};
+  const scores=data.map(s=>s.score);
+  const maxS=Math.max(...scores),minS=Math.max(0,Math.min(...scores)-5);
+  const sx=i=>pad.l+i*(W-pad.l-pad.r)/(data.length-1);
+  const sy=v=>pad.t+(1-(v-minS)/(maxS-minS+1))*(H-pad.t-pad.b);
+  const pts=data.map((d,i)=>`${sx(i)},${sy(d.score)}`).join(' ');
+  const area=`${sx(0)},${H-pad.b} ${pts} ${sx(data.length-1)},${H-pad.b}`;
+  const grids=[0,0.25,0.5,0.75,1].map(t=>{
+    const v=Math.round(minS+t*(maxS-minS)); const y=sy(v);
+    return `<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="var(--border)" stroke-dasharray="4 4" opacity="0.5"/>
+            <text x="${pad.l-6}" y="${y+4}" text-anchor="end" font-size="10" fill="var(--text-muted)">${v}</text>`;
   }).join('');
-
-  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(t => {
-    const v = Math.round(minS + t * (maxS - minS));
-    const y = sy(v);
-    return `<line class="chart-grid-line" x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}"/>
-            <text class="chart-label" x="${pad.left - 8}" y="${y + 4}" text-anchor="end">${v}</text>`;
+  const labels=data.map((d,i)=>{
+    if(i%Math.ceil(data.length/6)!==0&&i!==data.length-1) return '';
+    const dt=new Date(d.ts);
+    return `<text x="${sx(i)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${dt.getDate()}/${dt.getMonth()+1}</text>`;
   }).join('');
-
-  wrap.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00e676" stop-opacity="0.4"/>
-      <stop offset="100%" stop-color="#00e676" stop-opacity="0"/>
-    </linearGradient></defs>
-    ${gridLines}
-    <polyline class="chart-area" points="${areaPts}" fill="url(#chartGrad)"/>
-    <polyline class="chart-line" points="${pts}"/>
-    ${data.map((d,i) => `<circle class="chart-dot" cx="${sx(i)}" cy="${sy(d.score)}" r="4"><title>Score: ${d.score}</title></circle>`).join('')}
-    ${labels}
-    <line class="chart-axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${H-pad.bottom}"/>
-    <line class="chart-axis" x1="${pad.left}" y1="${H-pad.bottom}" x2="${W-pad.right}" y2="${H-pad.bottom}"/>
-  </svg>`;
+  const dots=data.map((d,i)=>`<circle cx="${sx(i)}" cy="${sy(d.score)}" r="4" fill="${d.passed?'var(--accent)':'var(--warn)'}"><title>L${d.level} Score:${d.score} ${d.passed?'Pass':'Fail'}</title></circle>`).join('');
+  wrap.innerHTML=_svgWrap(`<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00e676" stop-opacity="0.35"/><stop offset="100%" stop-color="#00e676" stop-opacity="0"/></linearGradient></defs>
+    ${grids}<polyline points="${area}" fill="url(#sg)"/>
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    ${dots}${labels}
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H-pad.b}" stroke="var(--border)"/>
+    <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="var(--border)"/>`,W,H);
 }
 
-function renderReactionChart(history) {
-  const wrap = document.getElementById('chart-reaction');
-  const data = history.filter(s =>
-    (s.exercise === 'arrow_reaction') && s.detail && s.detail.includes('avg reaction')
-  ).slice(0, 20).reverse();
-
-  if (data.length < 2) {
-    wrap.innerHTML = '<div class="chart-empty">Play Arrow Reaction to see your reaction time trend.</div>';
-    return;
-  }
-
-  const W = wrap.offsetWidth || 500, H = 180;
-  const pad = { top: 20, right: 20, bottom: 40, left: 55 };
-
-  const rts = data.map(s => {
-    const m = s.detail.match(/avg reaction (\d+)ms/);
-    return m ? parseInt(m[1]) : null;
-  }).filter(Boolean);
-
-  if (rts.length < 2) { wrap.innerHTML = '<div class="chart-empty">Not enough reaction data yet.</div>'; return; }
-
-  const maxR = Math.max(...rts), minR = Math.max(0, Math.min(...rts) - 20);
-  const sx = (i) => pad.left + i * (W - pad.left - pad.right) / (rts.length - 1);
-  const sy = (v) => pad.top + (1 - (v - minR) / (maxR - minR + 50)) * (H - pad.top - pad.bottom);
-
-  const pts = rts.map((v, i) => `${sx(i)},${sy(v)}`).join(' ');
-  const areaPts = `${sx(0)},${H - pad.bottom} ${pts} ${sx(rts.length-1)},${H - pad.bottom}`;
-
-  wrap.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="rtGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#4fc3f7" stop-opacity="0.4"/>
-      <stop offset="100%" stop-color="#4fc3f7" stop-opacity="0"/>
-    </linearGradient></defs>
-    ${[0,0.5,1].map(t => {
-      const v = Math.round(minR + t * (maxR - minR));
-      const y = sy(v);
-      return `<line class="chart-grid-line" x1="${pad.left}" y1="${y}" x2="${W-pad.right}" y2="${y}"/>
-              <text class="chart-label" x="${pad.left-8}" y="${y+4}" text-anchor="end">${v}ms</text>`;
-    }).join('')}
-    <polyline points="${areaPts}" fill="url(#rtGrad)" style="opacity:0.3"/>
+function _renderAccChart(history){
+  const wrap=document.getElementById('chart-accuracy');
+  const data=history.filter(s=>s.exercise===progressFilter&&s.accuracy!=null).slice(0,30).reverse();
+  if(data.length<2){ wrap.innerHTML='<div class="chart-empty">Play more sessions to see accuracy trend.</div>'; return; }
+  const W=wrap.offsetWidth||600,H=160,pad={t:20,r:20,b:35,l:40};
+  const sx=i=>pad.l+i*(W-pad.l-pad.r)/(data.length-1);
+  const sy=v=>pad.t+(1-v/100)*(H-pad.t-pad.b);
+  const pts=data.map((d,i)=>`${sx(i)},${sy(d.accuracy)}`).join(' ');
+  const area=`${sx(0)},${H-pad.b} ${pts} ${sx(data.length-1)},${H-pad.b}`;
+  const labels=[0,50,90].map(v=>{
+    const y=sy(v);
+    return `<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="var(--border)" stroke-dasharray="4 4" opacity="0.4"/>
+            <text x="${pad.l-6}" y="${y+4}" text-anchor="end" font-size="10" fill="var(--text-muted)">${v}%</text>`;
+  }).join('');
+  wrap.innerHTML=_svgWrap(`<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4fc3f7" stop-opacity="0.3"/><stop offset="100%" stop-color="#4fc3f7" stop-opacity="0"/></linearGradient></defs>
+    ${labels}<polyline points="${area}" fill="url(#ag)"/>
     <polyline points="${pts}" fill="none" stroke="#4fc3f7" stroke-width="2"/>
-    ${rts.map((v,i)=>`<circle cx="${sx(i)}" cy="${sy(v)}" r="4" fill="#4fc3f7"><title>${v}ms</title></circle>`).join('')}
-    <line class="chart-axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${H-pad.bottom}"/>
-    <line class="chart-axis" x1="${pad.left}" y1="${H-pad.bottom}" x2="${W-pad.right}" y2="${H-pad.bottom}"/>
-  </svg><div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">Lower is better — faster reactions</div>`;
+    ${data.map((d,i)=>`<circle cx="${sx(i)}" cy="${sy(d.accuracy)}" r="4" fill="${d.passed?'#4fc3f7':'var(--warn)'}"><title>${d.accuracy}%</title></circle>`).join('')}
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H-pad.b}" stroke="var(--border)"/>
+    <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="var(--border)"/>`,W,H);
 }
 
-function renderDailyChart(history) {
-  const wrap = document.getElementById('chart-daily');
-  if (!history.length) {
-    wrap.innerHTML = '<div class="chart-empty">No training data yet.</div>';
-    return;
+function _renderDailyChart(history){
+  const wrap=document.getElementById('chart-daily');
+  const W=wrap.offsetWidth||700,H=160,pad={t:20,r:20,b:35,l:40};
+  const days=[];
+  for(let i=13;i>=0;i--){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    const key=d.toDateString();
+    const secs=history.filter(s=>new Date(s.ts).toDateString()===key).reduce((sum,s)=>sum+(s.duration||0),0);
+    days.push({label:`${d.getDate()}/${d.getMonth()+1}`,mins:Math.min(10,secs/60)});
   }
-
-  // Last 14 days
-  const days = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = d.toDateString();
-    const secs = history.filter(s => new Date(s.ts).toDateString() === key).reduce((sum, s) => sum + (s.duration || 0), 0);
-    days.push({ label: `${d.getDate()}/${d.getMonth()+1}`, mins: Math.min(10, secs / 60) });
-  }
-
-  const W = wrap.offsetWidth || 700, H = 160;
-  const pad = { top: 20, right: 20, bottom: 35, left: 40 };
-  const barW = (W - pad.left - pad.right) / days.length - 4;
-
-  const bars = days.map((d, i) => {
-    const x = pad.left + i * ((W - pad.left - pad.right) / days.length);
-    const barH = (d.mins / 10) * (H - pad.top - pad.bottom);
-    const y = H - pad.bottom - barH;
-    const isDone = d.mins >= 10;
-    return `<rect x="${x + 2}" y="${y}" width="${barW}" height="${Math.max(2, barH)}" rx="3"
-      fill="${isDone ? 'var(--accent)' : 'var(--accent)55'}" opacity="${d.mins > 0 ? 0.85 : 0.15}">
-      <title>${d.label}: ${d.mins.toFixed(1)} min</title></rect>
-    <text class="chart-label" x="${x + barW/2 + 2}" y="${H - 10}" text-anchor="middle">${i % 3 === 0 ? d.label : ''}</text>`;
+  const bw=(W-pad.l-pad.r)/days.length-4;
+  const bars=days.map((d,i)=>{
+    const x=pad.l+i*((W-pad.l-pad.r)/days.length);
+    const bh=(d.mins/10)*(H-pad.t-pad.b); const y=H-pad.b-bh;
+    return `<rect x="${x+2}" y="${y}" width="${bw}" height="${Math.max(2,bh)}" rx="3"
+      fill="${d.mins>=10?'var(--accent)':'var(--accent)66'}" opacity="${d.mins>0?0.9:0.15}">
+      <title>${d.label}: ${d.mins.toFixed(1)}min</title></rect>
+      <text x="${x+bw/2+2}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${i%3===0?d.label:''}</text>`;
   }).join('');
-
-  wrap.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-    <line class="chart-grid-line" x1="${pad.left}" y1="${pad.top}" x2="${W-pad.right}" y2="${pad.top}"/>
-    <text class="chart-label" x="${pad.left-8}" y="${pad.top+4}" text-anchor="end">10m</text>
-    <text class="chart-label" x="${pad.left-8}" y="${H-pad.bottom+4}" text-anchor="end">0</text>
+  wrap.innerHTML=_svgWrap(`<line x1="${pad.l}" y1="${pad.t}" x2="${W-pad.r}" y2="${pad.t}" stroke="var(--border)" stroke-dasharray="4 4" opacity="0.4"/>
+    <text x="${pad.l-6}" y="${pad.t+4}" text-anchor="end" font-size="10" fill="var(--text-muted)">10m</text>
+    <text x="${pad.l-6}" y="${H-pad.b+4}" text-anchor="end" font-size="10" fill="var(--text-muted)">0</text>
     ${bars}
-    <line class="chart-axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${H-pad.bottom}"/>
-    <line class="chart-axis" x1="${pad.left}" y1="${H-pad.bottom}" x2="${W-pad.right}" y2="${H-pad.bottom}"/>
-  </svg>`;
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H-pad.b}" stroke="var(--border)"/>
+    <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="var(--border)"/>`,W,H);
 }
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────
-function renderSettings() {
-  const user = Auth.currentUser();
-  if (!user) return;
-
-  document.getElementById('set-username').textContent = user.username;
-  document.getElementById('set-sessions').textContent = user.sessions.length;
-  document.getElementById('set-since').textContent = new Date(user.createdAt).toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'});
-
-  const diffWrap = document.getElementById('set-diff-progress');
-  const exIds = ['peripheral_flash', 'arrow_reaction', 'number_scatter'];
-  diffWrap.innerHTML = exIds.map(id => {
-    const ex = EXERCISES.find(e => e.id === id);
-    const diffs = DIFFICULTIES[id];
-    const unlocked = Auth.getUnlockedLevel(id);
-    const pips = diffs.map((d, i) => {
-      const cls = i < unlocked ? 'done' : i === unlocked ? 'current' : '';
-      return `<div class="diff-pip ${cls}" title="${d.label}"></div>`;
-    }).join('');
-    return `<div class="diff-progress-row">
-      <span class="diff-progress-name">${ex.icon} ${ex.name}</span>
-      <div class="diff-progress-status">${pips}</div>
+function renderSettings(){
+  const u=Auth.currentUser(); if(!u) return;
+  document.getElementById('set-username').textContent=u.username;
+  document.getElementById('set-sessions').textContent=u.sessions.length;
+  document.getElementById('set-since').textContent=new Date(u.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  const exIds=['peripheral_flash','arrow_reaction','number_scatter'];
+  document.getElementById('set-levels').innerHTML=exIds.map(id=>{
+    const ex=EXERCISES.find(e=>e.id===id);
+    const lvl=Auth.getUserLevel(id);
+    const consec=Auth.getConsecutive(id);
+    const cfg=getLevel(id,lvl);
+    return `<div class="settings-row">
+      <label>${ex.icon} ${ex.name}</label>
+      <span class="val" style="color:${levelColour(lvl)}">Level ${lvl} · ${consec}/3 passes</span>
     </div>`;
   }).join('');
+  const maxAcc=Auth.getMaxAccessible();
+  document.getElementById('set-max-level').textContent=`Level ${maxAcc} (Stage ${levelStage(maxAcc)})`;
+}
+
+// ─── ADMIN PAGE ───────────────────────────────────────────────────
+function renderAdmin(){
+  const users=Auth.getAllUsers();
+  const tbody=document.getElementById('admin-tbody');
+  const today=new Date().toDateString();
+
+  tbody.innerHTML=users.map(u=>{
+    const todaySecs=u.sessions.filter(s=>new Date(s.ts).toDateString()===today).reduce((sum,s)=>sum+(s.duration||0),0);
+    const totalSecs=u.sessions.reduce((sum,s)=>sum+(s.duration||0),0);
+    const lastSess=u.sessions.length?new Date(u.sessions[0].ts).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'}):'—';
+    const pfLvl=u.levels.peripheral_flash||1, arLvl=u.levels.arrow_reaction||1, nsLvl=u.levels.number_scatter||1;
+    const maxAcc=maxAccessibleLevel(u.levels);
+    return `<tr>
+      <td><strong>${u.username}</strong></td>
+      <td>${u.sessions.length}</td>
+      <td>${Math.floor(todaySecs/60)}m ${todaySecs%60}s</td>
+      <td>${Math.round(totalSecs/60)}m total</td>
+      <td>${lastSess}</td>
+      <td>
+        <span style="color:${levelColour(pfLvl)}">PF:${pfLvl}</span> ·
+        <span style="color:${levelColour(arLvl)}">AR:${arLvl}</span> ·
+        <span style="color:${levelColour(nsLvl)}">NS:${nsLvl}</span>
+      </td>
+      <td style="color:var(--gold)">Stage ${levelStage(maxAcc)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('admin-user-count').textContent=users.length;
+  const todayActive=users.filter(u=>u.sessions.some(s=>new Date(s.ts).toDateString()===today)).length;
+  document.getElementById('admin-today-active').textContent=todayActive;
+  const totalMin=Math.round(users.reduce((sum,u)=>sum+u.sessions.reduce((s2,s)=>s2+(s.duration||0),0),0)/60);
+  document.getElementById('admin-total-mins').textContent=totalMin+'m';
 }
 
 // ─── AUTH SETUP ───────────────────────────────────────────────────
-function setupAuth() {
-  let mode = 'login';
-  const errorEl  = document.getElementById('login-error');
-  const titleEl  = document.getElementById('login-title');
-  const submitEl = document.getElementById('login-submit');
-  const toggleEl = document.getElementById('login-toggle-text');
+function setupAuth(){
+  let mode='login';
+  const errEl=document.getElementById('login-error');
+  const titleEl=document.getElementById('login-title');
+  const submitEl=document.getElementById('login-submit');
+  const toggleEl=document.getElementById('login-toggle-text');
 
-  function rebindToggle() {
-    document.getElementById('login-toggle-link').addEventListener('click', () => {
-      mode = mode === 'login' ? 'register' : 'login';
-      if (mode === 'register') {
-        titleEl.textContent = 'Create Account';
-        submitEl.textContent = 'Create Account';
-        toggleEl.innerHTML = 'Already have an account? <a id="login-toggle-link">Sign in</a>';
-      } else {
-        titleEl.textContent = 'Sign In';
-        submitEl.textContent = 'Sign In';
-        toggleEl.innerHTML = 'New here? <a id="login-toggle-link">Create an account</a>';
-      }
-      errorEl.classList.remove('show');
-      rebindToggle();
-    });
+  function rebind(){
+    const lnk=document.getElementById('login-toggle-link');
+    if(!lnk) return;
+    lnk.onclick=()=>{
+      mode=mode==='login'?'register':'login';
+      titleEl.textContent=mode==='register'?'Create Account':'Sign In';
+      submitEl.textContent=mode==='register'?'Create Account':'Sign In';
+      toggleEl.innerHTML=mode==='register'
+        ?'Already have an account? <a id="login-toggle-link">Sign in</a>'
+        :'New here? <a id="login-toggle-link">Create an account</a>';
+      errEl.classList.remove('show'); rebind();
+    };
   }
-  rebindToggle();
+  rebind();
 
-  document.getElementById('login-form-el').addEventListener('submit', e => {
+  document.getElementById('login-form-el').addEventListener('submit',e=>{
     e.preventDefault();
-    const user = document.getElementById('login-username').value;
-    const pass = document.getElementById('login-password').value;
-    errorEl.classList.remove('show');
-    const result = mode === 'login' ? Auth.login(user, pass) : Auth.register(user, pass);
-    if (!result.ok) { errorEl.textContent = result.msg; errorEl.classList.add('show'); }
+    const u=document.getElementById('login-username').value;
+    const p=document.getElementById('login-password').value;
+    errEl.classList.remove('show');
+    const res=mode==='login'?Auth.login(u,p):Auth.register(u,p);
+    if(!res.ok){ errEl.textContent=res.msg; errEl.classList.add('show'); }
     else onLogin();
   });
 }
 
-function onLogin() {
-  showPage('dashboard');
-  renderDashboard();
-  Timer.reset();
-  document.getElementById('nav-username').textContent = Auth.currentUser().username;
+function onLogin(){
+  const user=Auth.currentUser();
+  document.getElementById('nav-username').textContent=user.username;
+  showPage('dashboard'); renderDashboard(); Timer.reset();
 }
 
-function setupNav() {
-  document.getElementById('nav-logo-link').addEventListener('click', () => {
-    if (Auth.currentKey()) goToDashboard();
-  });
-
-  document.getElementById('nav-logout').addEventListener('click', () => {
+function setupNav(){
+  document.getElementById('nav-logo-link').onclick=()=>{ if(Auth.currentKey()) goToDashboard(); };
+  document.getElementById('nav-logout').onclick=()=>{
     Timer.reset();
-    if (currentGame) { currentGame.cleanup(); currentGame = null; }
-    Auth.logout();
-    showPage('login');
-  });
-
-  document.getElementById('nav-pause-btn').addEventListener('click', () => Timer.toggle());
-
-  document.querySelectorAll('.nav-link').forEach(link => {
-    link.addEventListener('click', () => {
-      const page = link.dataset.page;
-      if (page === 'dashboard') { goToDashboard(); }
-      else if (page === 'progress') { showPage('progress'); renderProgress(); }
-      else if (page === 'settings') { showPage('settings'); renderSettings(); }
-    });
+    if(currentGame){currentGame.cleanup();currentGame=null;}
+    Auth.logout(); showPage('login');
+  };
+  document.getElementById('nav-pause-btn').onclick=()=>Timer.toggle();
+  document.querySelectorAll('.nav-link').forEach(l=>{
+    l.onclick=()=>{
+      const pg=l.dataset.page;
+      if(pg==='dashboard') goToDashboard();
+      else if(pg==='progress'){ showPage('progress'); renderProgress(); }
+      else if(pg==='settings'){ showPage('settings'); renderSettings(); }
+    };
   });
 }
 
-function setupSessionOver() {
-  document.getElementById('session-over-close').addEventListener('click', () => {
-    document.getElementById('session-over').classList.remove('show');
-    goToDashboard();
-  });
-}
-
-function setupPausedOverlay() {
-  document.getElementById('paused-resume-btn').addEventListener('click', () => Timer.resume());
-}
-
-function setupSettings() {
-  document.getElementById('set-reset-btn').addEventListener('click', () => {
-    if (confirm('Reset ALL your training data? This cannot be undone.')) {
-      Auth.resetData();
-      renderSettings();
-      renderDashboard();
+// ── Admin route — check URL hash ──────────────────────────────────
+function checkAdminRoute(){
+  if(window.location.hash==='#admin'){
+    if(Auth.currentKey()===ADMIN_USER.toLowerCase()){
+      showPage('admin'); renderAdmin(); return true;
     }
-  });
+  }
+  return false;
 }
 
-// ─── INIT ─────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded',()=>{
   setupAuth();
   setupNav();
-  setupSessionOver();
-  setupPausedOverlay();
-  setupSettings();
-  Timer.render();
+  document.getElementById('session-over-close').onclick=()=>{
+    document.getElementById('session-over').classList.remove('show'); goToDashboard();
+  };
+  document.getElementById('paused-resume-btn').onclick=()=>Timer.resume();
+  document.getElementById('set-reset-btn').onclick=()=>{
+    if(confirm('Reset ALL your training data? This cannot be undone.')){
+      Auth.resetData(); renderSettings(); renderDashboard();
+    }
+  };
+  document.getElementById('admin-refresh').onclick=renderAdmin;
 
-  if (Auth.currentKey() && Auth.currentUser()) onLogin();
-  else showPage('login');
+  Timer.render();
+  if(Auth.currentKey()&&Auth.currentUser()){
+    if(!checkAdminRoute()) onLogin();
+  } else {
+    showPage('login');
+  }
+
+  // Watch for hash change (navigate to #admin)
+  window.addEventListener('hashchange',()=>{
+    if(!checkAdminRoute()&&Auth.currentKey()) goToDashboard();
+  });
 });
