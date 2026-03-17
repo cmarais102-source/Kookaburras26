@@ -24,20 +24,25 @@ function pfLevel(n) {
 
 // ── ARROW REACTION levels ────────────────────────────────────────
 function arLevel(n) {
-  // arrowCount = how many distractor arrows appear alongside target
-  // Easy levels: 2-4 arrows, Hard levels: 8-16 arrows
   const totalArrows = lerp(2, 16, n);
+  // Rounds vary between 12-20, capped at 20
+  const rounds = Math.min(20, lerp(12, 20, n));
+  // From level 10+, arrows appear anywhere in the box (scattered)
+  // Below level 10 they appear in a neat centred cluster
+  const scattered = n >= 10;
   return {
     level:        n,
-    rounds:       lerp(12, 30, n),
+    rounds,
     totalArrows,
-    expireTime:   lerp(2800, 900, n),         // ms before arrow expires
+    scattered,
+    expireTime:   lerp(2800, 900, n),
     minDelay:     lerp(900, 250, n),
     maxDelay:     lerp(1800, 700, n),
     passAccuracy: lerp(60, 90, n),
     label:        levelLabel(n)
   };
 }
+
 
 // ── NUMBER SCATTER levels ────────────────────────────────────────
 function nsLevel(n) {
