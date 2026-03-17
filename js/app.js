@@ -96,13 +96,17 @@ function openLevelPicker(exId) {
   const ex       = EXERCISES.find(e=>e.id===exId);
   const maxAcc   = Auth.getMaxAccessible();
   const curLevel = Auth.getUserLevel(exId);
+  const consec   = Auth.getConsecutive(exId);
   showPage('exercise');
   document.getElementById('ex-page-title').textContent=ex.name;
   const arena=document.getElementById('game-arena');
 
-  // Build stage rows
   let html='<div class="level-picker">';
-  html+=`<p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.5rem">You are on Level <strong style="color:var(--accent)">${curLevel}</strong>. Max accessible: <strong style="color:var(--gold)">${maxAcc}</strong></p>`;
+  html+=`<p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.5rem">
+    You are on Level <strong style="color:var(--accent)">${curLevel}</strong> &nbsp;·&nbsp;
+    Max accessible: <strong style="color:var(--gold)">${maxAcc}</strong> &nbsp;·&nbsp;
+    <span style="color:var(--gold)">${consec}/3</span> consecutive passes on current level
+  </p>`;
 
   for(let stage=1; stage<=8; stage++) {
     const stageStart=(stage-1)*STAGE_SIZE+1;
@@ -111,22 +115,39 @@ function openLevelPicker(exId) {
     html+=`<div class="level-stage${stageUnlocked?'':' locked'}">
       <div class="level-stage-title">Stage ${stage} — Levels ${stageStart}–${stageEnd}${stageUnlocked?'':'  🔒'}</div>
       <div class="level-stage-grid">`;
-    for(let lvl=stageStart;lvl<=stageEnd;lvl++) {
-      const locked=lvl>maxAcc;
-      const isCur=lvl===curLevel;
-      const cfg=getLevel(exId,lvl);
-      html+=`<button class="level-btn${locked?' locked':''}${isCur?' current':''}"
+
+    for(let lvl=stageStart; lvl<=stageEnd; lvl++) {
+      const locked = lvl > maxAcc;
+      const isCur  = lvl === curLevel;
+      const isDone = lvl < curLevel;
+      const cfg    = getLevel(exId, lvl);
+
+      // Bottom content: tick if done, pips if current, label if upcoming
+      let bottom = '';
+      if(isDone) {
+        bottom = `<span class="level-tick">✓</span>`;
+      } else if(isCur) {
+        bottom = `<div class="lp-pips">
+          ${[0,1,2].map(i=>`<div class="lp-pip${consec>i?' done':''}"></div>`).join('')}
+        </div>`;
+      } else {
+        bottom = `<span class="level-label">${cfg?cfg.label:''}</span>`;
+      }
+
+      html+=`<button
+        class="level-btn${locked?' locked':''}${isCur?' current':''}${isDone?' done':''}"
         ${locked?'disabled':''}
         onclick="launchLevel('${exId}',${lvl})"
         title="${cfg?cfg.label+' · '+cfg.passAccuracy+'% to pass':''}"
         style="--lc:${levelColour(lvl)}">
         <span class="level-num">${lvl}</span>
-        <span class="level-label">${cfg?cfg.label:''}</span>
+        ${bottom}
       </button>`;
     }
     html+='</div></div>';
   }
   html+='</div>';
+
   arena.innerHTML=`
     <div style="width:100%;overflow-y:auto;max-height:calc(100vh - 200px)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
