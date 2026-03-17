@@ -581,6 +581,15 @@ body::before {
 .lp-pip { width:8px; height:8px; border-radius:50%; background:var(--border); transition:background 0.3s; }
 .lp-pip.done { background: var(--gold); }
 
+.ar-arrow-scattered {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 3.5rem;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+}
+
 /* ── SCROLLBAR ── */
 ::-webkit-scrollbar { width:6px; }
 ::-webkit-scrollbar-track { background:var(--bg); }
