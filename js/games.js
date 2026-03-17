@@ -10,14 +10,14 @@ const EXERCISES = [
   { id:'coming_5', name:'Contrast Vision', icon:'🌫️', desc:'Detect low-contrast targets in challenging conditions.', locked:true }
 ];
 
-// ─── ARROW COLOURS ────────────────────────────────────────────────
+// ─── ARROW COLOURS & DIRECTIONS ───────────────────────────────────
 const ARROW_COLOURS = [
-  { name:'Blue',   hex:'#4fc3f7', key:'blue'   },
-  { name:'Red',    hex:'#ef5350', key:'red'    },
-  { name:'Yellow', hex:'#ffd54f', key:'yellow' },
-  { name:'Green',  hex:'#00e676', key:'green'  },
-  { name:'Purple', hex:'#ce93d8', key:'purple' },
-  { name:'Orange', hex:'#ff6b35', key:'orange' }
+  { name:'Blue',   hex:'#4fc3f7' },
+  { name:'Red',    hex:'#ef5350' },
+  { name:'Yellow', hex:'#ffd54f' },
+  { name:'Green',  hex:'#00e676' },
+  { name:'Purple', hex:'#ce93d8' },
+  { name:'Orange', hex:'#ff6b35' }
 ];
 const ARROW_DIRS = [
   { dir:'up',    arrow:'↑', key:'ArrowUp'    },
@@ -26,7 +26,6 @@ const ARROW_DIRS = [
   { dir:'right', arrow:'→', key:'ArrowRight' }
 ];
 
-// ─── SHARED RESULT HELPER ─────────────────────────────────────────
 function calcPassed(correct, total, requiredPct) {
   if (!total) return false;
   return (correct / total) * 100 >= requiredPct;
@@ -50,14 +49,14 @@ const GamePeripheralFlash = {
         <div class="game-score-item"><div class="game-score-label">Need</div><div class="game-score-value" style="color:var(--gold)">${cfg.passAccuracy}%</div></div>
       </div>
       <div id="pf-field"><div class="pf-center"></div></div>`;
-    this.field = ementById('pf-field');
+    this.field = document.getElementById('pf-field');
     this.nextDot();
   },
 
   nextDot() {
     if (this.round >= this.cfg.rounds) { this.finish(); return; }
     this.round++;
-    ementById('pf-round').textContent = `${this.round}/${this.cfg.rounds}`;
+    document.getElementById('pf-round').textContent = `${this.round}/${this.cfg.rounds}`;
 
     const fw=this.field.offsetWidth, fh=this.field.offsetHeight;
     const cx=fw/2, cy=fh/2, minD=Math.min(fw,fh)*0.22;
@@ -77,20 +76,20 @@ const GamePeripheralFlash = {
       if(dot.classList.contains('pf-missed')) return;
       clearTimeout(this.dotTimeout);
       this.caught++; this.score+=10;
-      ementById('pf-caught').textContent=this.caught;
+      document.getElementById('pf-caught').textContent=this.caught;
       dot.style.background='var(--accent)'; dot.style.boxShadow='0 0 16px var(--accent)';
       setTimeout(()=>{ dot.remove(); this.nextDot(); },150);
     });
 
     this.dotTimeout = setTimeout(()=>{
       dot.classList.add('pf-missed'); this.missed++;
-      ementById('pf-missed').textContent=this.missed;
+      document.getElementById('pf-missed').textContent=this.missed;
       setTimeout(()=>{ dot.remove(); this.nextDot(); },300);
     }, this.cfg.dotLifetime);
   },
 
   finish() {
-    const acc   = Math.round((this.caught/this.cfg.rounds)*100);
+    const acc    = Math.round((this.caught/this.cfg.rounds)*100);
     const passed = calcPassed(this.caught, this.cfg.rounds, this.cfg.passAccuracy);
     showResult('peripheral_flash', this.score, this.cfg.level,
       `${this.caught}/${this.cfg.rounds} caught — ${acc}% accuracy`, passed, acc);
@@ -99,22 +98,22 @@ const GamePeripheralFlash = {
 };
 
 // ══════════════════════════════════════════════════════════════════
-//  GAME: ARROW REACTION  (colour + keyboard)
+//  GAME: ARROW REACTION
 // ══════════════════════════════════════════════════════════════════
 const GameArrowReaction = {
   score:0, correct:0, wrong:0, round:0,
   reactionTimes:[], cfg:null,
   targetColour:null, currentDir:null,
   arrowStart:null, waitTimer:null, expireTimer:null,
-  _keyHandler:null, field:null,
+  _keyHandler:null, _scatteredEls:[],
 
   init(arena, cfg) {
-    this.score=0; this.correct=0; this.wrong=0; this.round=0; this.reactionTimes=[];
+    this.score=0; this.correct=0; this.wrong=0; this.round=0;
+    this.reactionTimes=[]; this._scatteredEls=[];
     this.cfg=cfg; this.currentDir=null;
-
-    // Pick starting target colour
     this.targetColour = ARROW_COLOURS[Math.floor(Math.random()*ARROW_COLOURS.length)];
 
+    // Build arena HTML
     arena.innerHTML = `
       <div class="game-score-bar">
         <div class="game-score-item"><div class="game-score-label">Score</div><div class="game-score-value" id="ar-score">0</div></div>
@@ -128,173 +127,201 @@ const GameArrowReaction = {
           <span class="ar-colour-label">Target colour:</span>
           <span id="ar-target-swatch" class="ar-target-swatch"></span>
           <span id="ar-target-name" class="ar-target-name"></span>
+          <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem">← press matching arrow key</span>
         </div>
         <div id="ar-arrows-wrap"></div>
         <div id="ar-key-hint">Use ← ↑ → ↓ arrow keys on your keyboard</div>
       </div>`;
 
-    this.field = ementById('ar-field');
     this._updateColourBar();
 
-    // Keyboard handler
-    this._keyHandler = (e)=>{
-      const dir = ARROW_DIRS.find(d=>d.key===e.key);
-      if(dir && this.currentDir) { e.preventDefault(); this.handleInput(dir.dir); }
+    // Keyboard listener
+    this._keyHandler = (e) => {
+      const found = ARROW_DIRS.find(d => d.key === e.key);
+      if (found && this.currentDir) {
+        e.preventDefault();
+        this.handleInput(found.dir);
+      }
     };
     document.addEventListener('keydown', this._keyHandler);
-    this.scheduleNext();
+
+    // Small delay before starting so DOM is ready
+    setTimeout(() => this.scheduleNext(), 100);
   },
 
   _updateColourBar() {
     const sw = document.getElementById('ar-target-swatch');
     const nm = document.getElementById('ar-target-name');
-    if(sw) sw.style.background = this.targetColour.hex;
-    if(nm) nm.textContent = this.targetColour.name;
+    if (sw) {
+      sw.style.background  = this.targetColour.hex;
+      sw.style.boxShadow   = `0 0 8px ${this.targetColour.hex}88`;
+    }
+    if (nm) {
+      nm.textContent   = this.targetColour.name;
+      nm.style.color   = this.targetColour.hex;
+    }
   },
 
   scheduleNext() {
-    if(this.round >= this.cfg.rounds) { this.finish(); return; }
-    const wrap = document.getElementById('ar-arrows-wrap');
-if(wrap) wrap.innerHTML = '';
-// Clear any scattered arrows from previous round
-if(this._scatteredEls) {
-  this._scatteredEls.forEach(el=>el.remove());
-  this._scatteredEls = [];
-}
+    if (this.round >= this.cfg.rounds) { this.finish(); return; }
+
+    // Clear previous arrows
+    this._clearArrows();
     this.currentDir = null;
 
-    // Rotate target colour every 3-5 rounds
-    if(this.round > 0 && this.round % (3 + Math.floor(Math.random()*3)) === 0) {
-      const others = ARROW_COLOURS.filter(c=>c.key!==this.targetColour.key);
+    // Rotate colour every 3-5 rounds
+    if (this.round > 0 && this.round % (3 + Math.floor(Math.random()*3)) === 0) {
+      const others = ARROW_COLOURS.filter(c => c.name !== this.targetColour.name);
       this.targetColour = others[Math.floor(Math.random()*others.length)];
       this._updateColourBar();
     }
 
-    const delay = this.cfg.minDelay + Math.random()*(this.cfg.maxDelay - this.cfg.minDelay);
-    this.waitTimer = setTimeout(()=>this.showArrows(), delay);
+    const delay = this.cfg.minDelay + Math.random() * (this.cfg.maxDelay - this.cfg.minDelay);
+    this.waitTimer = setTimeout(() => this.showArrows(), delay);
   },
 
   showArrows() {
     this.round++;
-    document.getElementById('ar-round').textContent = `${this.round}/${this.cfg.rounds}`;
+    const roundEl = document.getElementById('ar-round');
+    if (roundEl) roundEl.textContent = `${this.round}/${this.cfg.rounds}`;
     this.arrowStart = Date.now();
 
-    const n = this.cfg.totalArrows;
-    // Pick the target arrow direction
+    // Pick target direction
     const targetDir = ARROW_DIRS[Math.floor(Math.random()*ARROW_DIRS.length)];
     this.currentDir = targetDir.dir;
 
-    // Pick distractor colours (exclude target colour)
-    const distractorCols = ARROW_COLOURS.filter(c=>c.key!==this.targetColour.key);
     // Build arrow list: 1 target + (n-1) distractors
-    const arrows = [{ dir:targetDir, colour:this.targetColour }];
-    for(let i=1; i<n; i++) {
-      const col = distractorCols[Math.floor(Math.random()*distractorCols.length)];
+    const distractors = ARROW_COLOURS.filter(c => c.name !== this.targetColour.name);
+    const arrows = [{ dir: targetDir, colour: this.targetColour }];
+    for (let i = 1; i < this.cfg.totalArrows; i++) {
+      const col = distractors[Math.floor(Math.random()*distractors.length)];
       const dir = ARROW_DIRS[Math.floor(Math.random()*ARROW_DIRS.length)];
-      arrows.push({ dir, colour:col });
+      arrows.push({ dir, colour: col });
     }
-    // Shuffle display order
-    for(let i=arrows.length-1; i>0; i--) {
-      const j=Math.floor(Math.random()*(i+1)); [arrows[i],arrows[j]]=[arrows[j],arrows[i]];
+    // Shuffle
+    for (let i = arrows.length-1; i > 0; i--) {
+      const j = Math.floor(Math.random()*(i+1));
+      [arrows[i], arrows[j]] = [arrows[j], arrows[i]];
     }
 
-    const wrap = document.getElementById('ar-arrows-wrap');
-if(!wrap) return;
-wrap.innerHTML = '';
+    const scattered = this.cfg.scattered;
 
-if(this.cfg.scattered) {
-  // Level 10+ — arrows placed randomly anywhere in the field
-  const field = document.getElementById('ar-field');
-  const fw = field.offsetWidth || 600;
-  const fh = field.offsetHeight || 400;
-  const placed = [];
-  arrows.forEach(a=>{
-    const el=document.createElement('div');
-    el.className='ar-arrow-item ar-arrow-scattered';
-    el.textContent=a.dir.arrow;
-    el.style.color=a.colour.hex;
-    el.style.textShadow=`0 0 12px ${a.colour.hex}88`;
-    // Find a non-overlapping position
-    let x, y, attempts=0, ok=false;
-    while(!ok && attempts<50){
-      x = 60 + Math.random()*(fw-120);
-      y = 60 + Math.random()*(fh-120);
-      ok = placed.every(p=>Math.hypot(p.x-x,p.y-y)>70);
-      attempts++;
+    if (scattered) {
+      // Level 10+ — place anywhere in the field
+      const field = document.getElementById('ar-field');
+      if (!field) return;
+      const fw = field.offsetWidth  || 700;
+      const fh = field.offsetHeight || 400;
+      const placed = [];
+
+      arrows.forEach(a => {
+        const el = document.createElement('div');
+        el.className = 'ar-arrow-scattered';
+        el.textContent = a.dir.arrow;
+        el.style.color = a.colour.hex;
+        el.style.textShadow = `0 0 14px ${a.colour.hex}99`;
+
+        let x, y, attempts = 0, ok = false;
+        while (!ok && attempts < 80) {
+          x = 70  + Math.random() * (fw - 140);
+          y = 100 + Math.random() * (fh - 180);
+          ok = placed.every(p => Math.hypot(p.x-x, p.y-y) > 75);
+          attempts++;
+        }
+        placed.push({x, y});
+        el.style.left = x + 'px';
+        el.style.top  = y + 'px';
+        field.appendChild(el);
+        this._scatteredEls.push(el);
+      });
+
+    } else {
+      // Level 1-9 — centred cluster in the wrap div
+      const wrap = document.getElementById('ar-arrows-wrap');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      arrows.forEach(a => {
+        const el = document.createElement('div');
+        el.className = 'ar-arrow-item';
+        el.textContent = a.dir.arrow;
+        el.style.color = a.colour.hex;
+        el.style.textShadow = `0 0 14px ${a.colour.hex}99`;
+        wrap.appendChild(el);
+      });
     }
-    placed.push({x,y});
-    el.style.left = x+'px';
-    el.style.top  = y+'px';
-    field.appendChild(el);
-    this._scatteredEls = this._scatteredEls || [];
-    this._scatteredEls.push(el);
-  });
-} else {
-  // Level 1-9 — arrows in a neat centred cluster
-  arrows.forEach(a=>{
-    const el=document.createElement('div');
-    el.className='ar-arrow-item';
-    el.textContent=a.dir.arrow;
-    el.style.color=a.colour.hex;
-    el.style.textShadow=`0 0 12px ${a.colour.hex}88`;
-    wrap.appendChild(el);
-  });
-}
 
-    this.expireTimer = setTimeout(()=>{
-      if(this.currentDir) {
-        this.currentDir=null;
+    // Expire timer
+    this.expireTimer = setTimeout(() => {
+      if (this.currentDir) {
+        this.currentDir = null;
         this._flashArena('wrong');
-        setTimeout(()=>this.scheduleNext(), 500);
+        setTimeout(() => this.scheduleNext(), 450);
       }
     }, this.cfg.expireTime);
   },
 
   handleInput(dir) {
-    if(!this.currentDir) return;
+    if (!this.currentDir) return;
     clearTimeout(this.expireTimer);
-    const rt = Date.now()-this.arrowStart;
-    const isCorrect = dir===this.currentDir;
-    this.currentDir=null;
+    const rt = Date.now() - this.arrowStart;
+    const isCorrect = dir === this.currentDir;
+    this.currentDir = null;
 
-    if(isCorrect) {
-      const pts=Math.max(5, Math.round(20 - rt/80));
-      this.score+=pts; this.correct++;
+    if (isCorrect) {
+      const pts = Math.max(5, Math.round(20 - rt/80));
+      this.score += pts; this.correct++;
       this.reactionTimes.push(rt);
       this._flashArena('correct');
-      document.getElementById('ar-score').textContent=this.score;
-      document.getElementById('ar-correct').textContent=this.correct;
-      if(this.reactionTimes.length) {
-        const avg=Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length);
-        document.getElementById('ar-avg').textContent=avg+'ms';
+      const scoreEl   = document.getElementById('ar-score');
+      const correctEl = document.getElementById('ar-correct');
+      const avgEl     = document.getElementById('ar-avg');
+      if (scoreEl)   scoreEl.textContent   = this.score;
+      if (correctEl) correctEl.textContent = this.correct;
+      if (avgEl && this.reactionTimes.length) {
+        const avg = Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length);
+        avgEl.textContent = avg + 'ms';
       }
     } else {
       this.wrong++;
-      this.score=Math.max(0,this.score-3);
+      this.score = Math.max(0, this.score - 3);
       this._flashArena('wrong');
-      document.getElementById('ar-score').textContent=this.score;
+      const scoreEl = document.getElementById('ar-score');
+      if (scoreEl) scoreEl.textContent = this.score;
     }
-    setTimeout(()=>this.scheduleNext(), 400);
+
+    setTimeout(() => this.scheduleNext(), 400);
+  },
+
+  _clearArrows() {
+    // Clear scattered els
+    this._scatteredEls.forEach(el => el.remove());
+    this._scatteredEls = [];
+    // Clear wrap
+    const wrap = document.getElementById('ar-arrows-wrap');
+    if (wrap) wrap.innerHTML = '';
   },
 
   _flashArena(type) {
-    const w=document.getElementById('ar-arrows-wrap');
-    if(!w) return;
-    w.classList.add('flash-'+type);
-    setTimeout(()=>w.classList.remove('flash-correct','flash-wrong'),300);
+    const field = document.getElementById('ar-field');
+    if (!field) return;
+    field.classList.add('flash-' + type);
+    setTimeout(() => field.classList.remove('flash-correct', 'flash-wrong'), 300);
   },
 
   finish() {
-    const acc    = Math.round((this.correct/this.cfg.rounds)*100);
-    const avgRt  = this.reactionTimes.length ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0)/this.reactionTimes.length) : 0;
+    const acc    = Math.round((this.correct / this.cfg.rounds) * 100);
+    const avgRt  = this.reactionTimes.length
+      ? Math.round(this.reactionTimes.reduce((a,b)=>a+b,0) / this.reactionTimes.length) : 0;
     const passed = calcPassed(this.correct, this.cfg.rounds, this.cfg.passAccuracy);
     showResult('arrow_reaction', this.score, this.cfg.level,
       `${this.correct}/${this.cfg.rounds} correct — ${acc}% · avg ${avgRt}ms`, passed, acc);
   },
 
   cleanup() {
-    clearTimeout(this.waitTimer); clearTimeout(this.expireTimer);
-    if(this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
+    clearTimeout(this.waitTimer);
+    clearTimeout(this.expireTimer);
+    this._clearArrows();
+    if (this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
   }
 };
 
@@ -310,11 +337,9 @@ const GameNumberScatter = {
     this.score=0; this.current=0; this.mistakes=0; this.times=[];
     this.cfg=cfg; this.elapsed=0;
 
-    // Generate number pool: mix of 1, 2, and possibly 3-digit numbers
     const pool = this._buildPool(cfg.count, cfg.maxDigit);
-    // Sequence to find: either sorted ascending or random order
     this.sequence = cfg.ordered
-      ? [...pool].sort((a,b)=>a-b)
+      ? [...pool].sort((a,b) => a-b)
       : this._shuffle([...pool]);
 
     const first = this.sequence[0];
@@ -334,27 +359,28 @@ const GameNumberScatter = {
     this.startTime = Date.now();
     this.scatter();
 
-    // Countdown timer
-    this.timerInterval = setInterval(()=>{
+    this.timerInterval = setInterval(() => {
       this.elapsed++;
       const left = this.cfg.timeLimit - this.elapsed;
       const el = document.getElementById('ns-timeleft');
-      if(el) { el.textContent=Math.max(0,left)+'s'; if(left<=10) el.style.color='var(--warn)'; }
-      if(left<=0) { clearInterval(this.timerInterval); this.finish(true); }
-    },1000);
+      if (el) { el.textContent = Math.max(0,left)+'s'; if(left<=10) el.style.color='var(--warn)'; }
+      if (left <= 0) { clearInterval(this.timerInterval); this.finish(true); }
+    }, 1000);
   },
 
   _buildPool(count, maxDigit) {
-    const pool=new Set();
-    while(pool.size < count) {
+    const pool = new Set();
+    while (pool.size < count) {
       let n;
-      if(maxDigit===2) {
-        n = Math.random()<0.4 ? (1+Math.floor(Math.random()*9)) : (10+Math.floor(Math.random()*90));
+      if (maxDigit === 2) {
+        n = Math.random()<0.4
+          ? (1 + Math.floor(Math.random()*9))
+          : (10 + Math.floor(Math.random()*90));
       } else {
-        const r=Math.random();
-        if(r<0.2) n=1+Math.floor(Math.random()*9);
-        else if(r<0.6) n=10+Math.floor(Math.random()*90);
-        else n=100+Math.floor(Math.random()*900);
+        const r = Math.random();
+        if (r < 0.2)      n = 1   + Math.floor(Math.random()*9);
+        else if (r < 0.6) n = 10  + Math.floor(Math.random()*90);
+        else              n = 100 + Math.floor(Math.random()*900);
       }
       pool.add(n);
     }
@@ -362,48 +388,52 @@ const GameNumberScatter = {
   },
 
   _shuffle(arr) {
-    for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+    for (let i=arr.length-1; i>0; i--) {
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
     return arr;
   },
 
   scatter() {
-    // Display numbers in random positions (display order ≠ find order)
     const display = this._shuffle([...this.sequence]);
-    const fw=this.field.offsetWidth, fh=this.field.offsetHeight;
-    const placed=[];
-    display.forEach(n=>{
+    const fw = this.field.offsetWidth, fh = this.field.offsetHeight;
+    const placed = [];
+    display.forEach(n => {
       let x,y,ok=false,att=0;
-      while(!ok && att<80) {
-        x=45+Math.random()*(fw-90); y=55+Math.random()*(fh-80);
-        ok=placed.every(p=>Math.hypot(p.x-x,p.y-y)>58); att++;
+      while (!ok && att<80) {
+        x = 45 + Math.random()*(fw-90);
+        y = 55 + Math.random()*(fh-80);
+        ok = placed.every(p => Math.hypot(p.x-x,p.y-y) > 58);
+        att++;
       }
       placed.push({x,y});
-      const el=document.createElement('div');
+      const el = document.createElement('div');
       el.className='ns-number'; el.textContent=n; el.dataset.num=n;
       el.style.left=x+'px'; el.style.top=y+'px';
-      el.addEventListener('click',()=>this.tap(n,el));
+      el.addEventListener('click', () => this.tap(n,el));
       this.field.appendChild(el);
     });
   },
 
-  tap(n,el) {
-    if(n===this.sequence[this.current]) {
+  tap(n, el) {
+    if (n === this.sequence[this.current]) {
       el.classList.add('correct'); el.style.pointerEvents='none';
-      this.score+=10;
+      this.score += 10;
       this.times.push(Date.now()-this.startTime); this.startTime=Date.now();
       this.current++;
       document.getElementById('ns-score').textContent=this.score;
       document.getElementById('ns-progress').textContent=`${this.current}/${this.cfg.count}`;
-      if(this.current>=this.sequence.length){ this.finish(false); return; }
-      const next=this.sequence[this.current];
+      if (this.current >= this.sequence.length) { this.finish(false); return; }
+      const next = this.sequence[this.current];
       document.getElementById('ns-target').textContent=next;
       document.getElementById('ns-prompt-num').textContent=next;
     } else {
       el.classList.add('wrong'); this.mistakes++;
-      this.score=Math.max(0,this.score-3);
+      this.score = Math.max(0, this.score-3);
       document.getElementById('ns-score').textContent=this.score;
       document.getElementById('ns-mistakes').textContent=this.mistakes;
-      setTimeout(()=>el.classList.remove('wrong'),300);
+      setTimeout(() => el.classList.remove('wrong'), 300);
     }
   },
 
@@ -412,7 +442,8 @@ const GameNumberScatter = {
     const found  = this.current;
     const acc    = Math.round((found/this.cfg.count)*100);
     const passed = !timeout && calcPassed(found, this.cfg.count, this.cfg.passAccuracy);
-    const avg    = this.times.length ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length) : 0;
+    const avg    = this.times.length
+      ? Math.round(this.times.reduce((a,b)=>a+b,0)/this.times.length) : 0;
     const detail = timeout
       ? `Time's up! ${found}/${this.cfg.count} found — ${acc}%`
       : `All ${this.cfg.count} found · ${acc}% · avg ${avg}ms · ${this.mistakes} mistake${this.mistakes!==1?'s':''}`;
