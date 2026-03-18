@@ -199,6 +199,7 @@ function _launchGame(exId, arena, cfg) {
     case 'peripheral_flash': currentGame=GamePeripheralFlash; break;
     case 'arrow_reaction':   currentGame=GameArrowReaction;   break;
     case 'number_scatter':   currentGame=GameNumberScatter;   break;
+    case 'shape_counter': currentGame = GameShapeCounter; break;
   }
   if(currentGame) currentGame.init(arena,cfg);
 }
