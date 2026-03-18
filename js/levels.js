@@ -13,11 +13,21 @@ function lerp(start, end, level) {
 
 // ── PERIPHERAL FLASH levels ──────────────────────────────────────
 function pfLevel(n) {
+  // Rounds: random between 15-20 for levels 1-19
+  // Levels 20-40: random between 15-25, capped at 25
+  const minRounds = 15;
+  const maxRounds = n >= 20 ? 25 : 20;
+  const rounds = minRounds + Math.floor(Math.random() * (maxRounds - minRounds + 1));
+
+  // Min distance from centre: lerp from 22% (level 1) to 65% (level 40)
+  const minDistPct = parseFloat((0.22 + (0.65 - 0.22) * ((n - 1) / 39)).toFixed(3));
+
   return {
     level:        n,
-    rounds:       lerp(15, 40, n),           // 15 → 40 rounds
-    dotLifetime:  lerp(1400, 550, n),         // 1400ms → 550ms (faster)
-    passAccuracy: lerp(60, 90, n),            // 60% → 90% required
+    rounds,
+    minDistPct,
+    dotLifetime:  lerp(1400, 550, n),
+    passAccuracy: lerp(60, 90, n),
     label:        levelLabel(n)
   };
 }
