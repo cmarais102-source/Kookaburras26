@@ -276,10 +276,14 @@ function renderDashboard() {
 // ─── PROGRESS PAGE ────────────────────────────────────────────────
 let progressFilter='peripheral_flash';
 function renderProgress() {
-  const exIds=['peripheral_flash','arrow_reaction','number_scatter','shape_counter'];
-  document.getElementById('progress-filter').innerHTML=exIds.map(id=>{
-    const ex=EXERCISES.find(e=>e.id===id);
-    return `<button class="ex-filter-btn${progressFilter===id?' active':''}" onclick="setProgressFilter('${id}')">${ex.icon} ${ex.name}</button>`;
+  const exIds=[
+    {id:'peripheral_flash', icon:'👁️', name:'Peripheral Flash'},
+    {id:'arrow_reaction',   icon:'🎯', name:'Arrow Reaction'},
+    {id:'number_scatter',   icon:'🔢', name:'Number Scatter'},
+    {id:'shape_counter',    icon:'🔷', name:'Shape Counter'}
+  ];
+  document.getElementById('progress-filter').innerHTML=exIds.map(e=>{
+    return `<button class="ex-filter-btn${progressFilter===e.id?' active':''}" onclick="setProgressFilter('${e.id}')">${e.icon} ${e.name}</button>`;
   }).join('');
   const history=Auth.getHistory();
   _renderScoreChart(history); _renderAccChart(history); _renderDailyChart(history);
