@@ -15,20 +15,21 @@ const Auth = {
       createdAt: Date.now(),
       sessions:  [],
       bests:     {},
-      // current reached level per exercise (1 = just started)
       levels: {
         peripheral_flash: 1,
         arrow_reaction:   1,
-        number_scatter:   1
+        number_scatter:   1,
+        shape_counter:    1
       },
-      // consecutive passes tracker {exId: count}
       consecutive: {
         peripheral_flash: 0,
         arrow_reaction:   0,
-        number_scatter:   0
+        number_scatter:   0,
+        shape_counter:    0
       }
     };
   },
+
 
   register(username, password) {
     const users = this.getUsers();
@@ -49,8 +50,8 @@ const Auth = {
     if (!user)                          return { ok: false, msg: 'User not found.' };
     if (atob(user.password) !== password) return { ok: false, msg: 'Incorrect password.' };
     // migrate old accounts
-    if (!user.levels)      user.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1 };
-    if (!user.consecutive) user.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0 };
+    if (!user.levels)      user.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1, shape_counter:1 };
+    if (!user.consecutive) user.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0, shape_counter:0 };
     this.saveUsers(users);
     sessionStorage.setItem(this.SESSION_KEY, key);
     return { ok: true };
