@@ -59,12 +59,15 @@ const GamePeripheralFlash = {
     document.getElementById('pf-round').textContent = `${this.round}/${this.cfg.rounds}`;
 
     const fw=this.field.offsetWidth, fh=this.field.offsetHeight;
-    const cx=fw/2, cy=fh/2, minD=Math.min(fw,fh)*0.22;
-    let x,y,att=0;
-    do {
-      const a=Math.random()*Math.PI*2, d=minD+Math.random()*(Math.min(cx,cy)-minD-24);
-      x=cx+Math.cos(a)*d; y=cy+Math.sin(a)*d; att++;
-    } while(att<30 && (x<24||x>fw-24||y<24||y>fh-24));
+const cx=fw/2, cy=fh/2;
+const minDistPct = this.cfg.minDistPct || 0.22;
+const minD = Math.min(fw, fh) * minDistPct;
+const maxD = Math.min(cx, cy) - 28;
+let x,y,att=0;
+do {
+  const a=Math.random()*Math.PI*2, d=minD+Math.random()*Math.max(0, maxD-minD);
+  x=cx+Math.cos(a)*d; y=cy+Math.sin(a)*d; att++;
+} while(att<50 && (x<24||x>fw-24||y<24||y>fh-24));
 
     const dot=document.createElement('div');
     dot.className='pf-dot';
