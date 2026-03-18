@@ -462,7 +462,7 @@ body::before {
 /* ── PERIPHERAL FLASH ── */
 #pf-field { position:relative; width:100%; flex:1; min-height:400px; cursor:crosshair; }
 .pf-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:16px; height:16px; background:var(--accent); border-radius:50%; box-shadow:0 0 14px var(--accent); }
-.pf-dot { position:absolute; width:22px; height:22px; border-radius:50%; background:#ff6b35; box-shadow:0 0 16px #ff6b3580; transform:translate(-50%,-50%); cursor:pointer; animation:dotPop 0.15s ease; }
+.pf-dot { position:absolute; width:36px; height:36px; border-radius:50%; background:#ff6b35; box-shadow:0 0 16px #ff6b3580; transform:translate(-50%,-50%); cursor:pointer; animation:dotPop 0.15s ease; }
 @keyframes dotPop { 0%{transform:translate(-50%,-50%) scale(0);opacity:0} 100%{transform:translate(-50%,-50%) scale(1);opacity:1} }
 .pf-missed { background:#444 !important; box-shadow:none !important; }
 
