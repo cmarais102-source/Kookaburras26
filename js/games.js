@@ -3,7 +3,7 @@ const EXERCISES = [
   { id:'peripheral_flash', name:'Peripheral Flash', icon:'👁️', desc:'Keep eyes on the centre dot. Click flashing targets in your periphery without looking away.', locked:false },
   { id:'arrow_reaction',   name:'Arrow Reaction',   icon:'🎯', desc:'Arrows appear in different colours. Use your keyboard arrow keys to match only the target colour arrow.', locked:false },
   { id:'number_scatter',   name:'Number Scatter',   icon:'🔢', desc:'Numbers are scattered on screen. Find and click them in the correct sequence as fast as possible.', locked:false },
-  { id:'coming_1', name:'Split Tracking',  icon:'🔀', desc:'Track two moving objects simultaneously.', locked:true },
+  { id:'shape_counter', name:'Shape Counter', icon:'🔷', desc:'Watch the target shape float and change. Count every change — distractors will try to fool you.', locked:false },
   { id:'coming_2', name:'Pattern Flash',   icon:'🧩', desc:'Memorise and replicate brief play diagrams.', locked:true },
   { id:'coming_3', name:'Focus Shift',     icon:'🎯', desc:'Rapidly shift focus between near and far targets.', locked:true },
   { id:'coming_4', name:'Puck Pursuit',    icon:'🏑', desc:'Track a fast-moving ball across the field.', locked:true },
