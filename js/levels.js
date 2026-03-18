@@ -62,22 +62,27 @@ function nsLevel(n) {
 }
 
 // ── SHAPE COUNTER levels ─────────────────────────────────────────
-// Speed anchors (stepped stages):
-//   L1=4, L10=8, L20=12, L30=17, L40=22
-// Distractors:
-//   L1-5: 0, L6-10: 1-2, L11-20: 3-6, L21-30: 6-10, L31-40: 10-20
-// Shape size: L1=42px → L40=16px
-// Change interval: random per change, min/max tighten with level
+// 1 round per session — need 3 consecutive passes to level up
+// Speed anchors (stepped): L1=4, L10=8, L20=12, L30=17, L40=22
+// Speed is variable — each session picks a random speed within
+// a ±20% range around the base speed for that level
+// Distractors: L1-5=0, L6-10=1-2, L11-20=3-6, L21-30=6-10, L31-40=10-20
+// Timer: random 6–20s per round
 function scLevel(n) {
 
-  // Move speed — stepped between stage anchors
-  let moveSpeed;
-  if      (n <= 10) moveSpeed = parseFloat((4  + (8  - 4)  * ((n - 1)  / 9)).toFixed(2));
-  else if (n <= 20) moveSpeed = parseFloat((8  + (12 - 8)  * ((n - 11) / 9)).toFixed(2));
-  else if (n <= 30) moveSpeed = parseFloat((12 + (17 - 12) * ((n - 21) / 9)).toFixed(2));
-  else              moveSpeed = parseFloat((17 + (22 - 17) * ((n - 31) / 9)).toFixed(2));
+  // Base speed — stepped between stage anchors
+  let baseSpeed;
+  if      (n <= 10) baseSpeed = 4  + (8  - 4)  * ((n - 1)  / 9);
+  else if (n <= 20) baseSpeed = 8  + (12 - 8)  * ((n - 11) / 9);
+  else if (n <= 30) baseSpeed = 12 + (17 - 12) * ((n - 21) / 9);
+  else              baseSpeed = 17 + (22 - 17) * ((n - 31) / 9);
 
-  // Distractor count — random within range per level group
+  // Variable speed — random ±20% around base each session
+  const speedMin = parseFloat((baseSpeed * 0.8).toFixed(2));
+  const speedMax = parseFloat((baseSpeed * 1.2).toFixed(2));
+  const moveSpeed = parseFloat((speedMin + Math.random() * (speedMax - speedMin)).toFixed(2));
+
+  // Distractors — random within range per level group
   let minDist, maxDist;
   if      (n <= 5)  { minDist=0;  maxDist=0;  }
   else if (n <= 10) { minDist=1;  maxDist=2;  }
@@ -86,24 +91,24 @@ function scLevel(n) {
   else              { minDist=10; maxDist=20; }
   const distractorCount = minDist + Math.floor(Math.random() * (maxDist - minDist + 1));
 
-  // Shape size: smaller at higher levels
+  // Shape size — smaller at higher levels
   const targetSize     = Math.round(lerp(42, 16, n));
   const distractorSize = Math.max(14, targetSize - 2);
 
-  // Change interval: random per change, tightens with level
+  // Change interval — tightens with level
   const minChangeInterval = Math.round(lerp(400, 200, n));
   const maxChangeInterval = Math.round(lerp(2000, 800, n));
 
-  // Round time: random 10-25s regardless of level
-  const minRoundTime = 10;
-  const maxRoundTime = 25;
+  // Round time — random 6–20s
+  const minRoundTime = 6;
+  const maxRoundTime = 20;
 
-  // Rounds per session: 4 at L1 → 8 at L40
-  const totalRounds = lerp(4, 8, n);
+  // 1 round per session
+  const totalRounds = 1;
 
-  // Pass: % of rounds that must be exactly correct
-  // L1=50% (2 of 4), L40=100% (all correct)
-  const passAccuracy = lerp(50, 100, n);
+  // Pass = got the exact count correct
+  // 3 consecutive passes needed to level up (handled by auth.js)
+  const passAccuracy = 100; // exact match only
 
   return {
     level:               n,
@@ -116,6 +121,8 @@ function scLevel(n) {
     targetSize,
     distractorSize,
     moveSpeed,
+    speedMin,
+    speedMax,
     passAccuracy,
     label:               levelLabel(n)
   };
