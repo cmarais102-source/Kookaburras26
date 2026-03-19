@@ -29,10 +29,10 @@ function toast(msg, colour) {
 }
 
 // ── Result screen ─────────────────────────────────────────────────
-function showResult(exId, score, level, detail, passed, accuracy) {
+async function showResult(exId, score, level, detail, passed, accuracy) {
   if(currentGame) currentGame.cleanup();
   const duration = Timer.exerciseDuration();
-  const levelUp  = Auth.saveSession({exercise:exId, score, level, detail, passed, accuracy, duration, ts:Date.now()});
+  const levelUp  = await Auth.saveSession({exercise:exId, score, level, detail, passed, accuracy, duration, ts:Date.now()});
 
   if(levelUp) {
     const ex=EXERCISES.find(e=>e.id===levelUp.exercise);
@@ -199,7 +199,6 @@ function _launchGame(exId, arena, cfg) {
     case 'peripheral_flash': currentGame=GamePeripheralFlash; break;
     case 'arrow_reaction':   currentGame=GameArrowReaction;   break;
     case 'number_scatter':   currentGame=GameNumberScatter;   break;
-    case 'shape_counter': currentGame = GameShapeCounter; break;
   }
   if(currentGame) currentGame.init(arena,cfg);
 }
@@ -276,14 +275,10 @@ function renderDashboard() {
 // ─── PROGRESS PAGE ────────────────────────────────────────────────
 let progressFilter='peripheral_flash';
 function renderProgress() {
-  const exIds=[
-    {id:'peripheral_flash', icon:'👁️', name:'Peripheral Flash'},
-    {id:'arrow_reaction',   icon:'🎯', name:'Arrow Reaction'},
-    {id:'number_scatter',   icon:'🔢', name:'Number Scatter'},
-    {id:'shape_counter',    icon:'🔷', name:'Shape Counter'}
-  ];
-  document.getElementById('progress-filter').innerHTML=exIds.map(e=>{
-    return `<button class="ex-filter-btn${progressFilter===e.id?' active':''}" onclick="setProgressFilter('${e.id}')">${e.icon} ${e.name}</button>`;
+  const exIds=['peripheral_flash','arrow_reaction','number_scatter'];
+  document.getElementById('progress-filter').innerHTML=exIds.map(id=>{
+    const ex=EXERCISES.find(e=>e.id===id);
+    return `<button class="ex-filter-btn${progressFilter===id?' active':''}" onclick="setProgressFilter('${id}')">${ex.icon} ${ex.name}</button>`;
   }).join('');
   const history=Auth.getHistory();
   _renderScoreChart(history); _renderAccChart(history); _renderDailyChart(history);
@@ -377,7 +372,7 @@ function renderSettings(){
   document.getElementById('set-username').textContent=u.username;
   document.getElementById('set-sessions').textContent=u.sessions.length;
   document.getElementById('set-since').textContent=new Date(u.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const exIds=['peripheral_flash','arrow_reaction','number_scatter','shape_counter'];
+  const exIds=['peripheral_flash','arrow_reaction','number_scatter'];
   document.getElementById('set-levels').innerHTML=exIds.map(id=>{
     const ex=EXERCISES.find(e=>e.id===id);
     const lvl=Auth.getUserLevel(id);
@@ -393,8 +388,8 @@ function renderSettings(){
 }
 
 // ─── ADMIN PAGE ───────────────────────────────────────────────────
-function renderAdmin(){
-  const users=Auth.getAllUsers();
+async function renderAdmin(){
+  const users=await Auth.getAllUsers();
   const tbody=document.getElementById('admin-tbody');
   const today=new Date().toDateString();
 
@@ -449,12 +444,12 @@ function setupAuth(){
   }
   rebind();
 
-  document.getElementById('login-form-el').addEventListener('submit',e=>{
+  document.getElementById('login-form-el').addEventListener('submit',async e=>{
     e.preventDefault();
     const u=document.getElementById('login-username').value;
     const p=document.getElementById('login-password').value;
     errEl.classList.remove('show');
-    const res=mode==='login'?Auth.login(u,p):Auth.register(u,p);
+    const res=mode==='login'?await Auth.login(u,p):await Auth.register(u,p);
     if(!res.ok){ errEl.textContent=res.msg; errEl.classList.add('show'); }
     else onLogin();
   });
