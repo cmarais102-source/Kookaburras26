@@ -484,6 +484,10 @@ function checkAdminRoute(){
   if(window.location.hash==='#admin'){
     if(Auth.currentKey()===ADMIN_USER.toLowerCase()){
       showPage('admin'); renderAdmin(); return true;
+    } else {
+      // Not logged in as admin — show login page
+      showPage('login');
+      return true;
     }
   }
   return false;
@@ -504,8 +508,15 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('admin-refresh').onclick=renderAdmin;
 
   Timer.render();
-  if(Auth.currentKey()&&Auth.currentUser()){
-    if(!checkAdminRoute()) onLogin();
+  if(Auth.currentKey()){
+    if(window.location.hash==='#admin' && Auth.currentKey()===ADMIN_USER.toLowerCase()){
+      showPage('admin'); renderAdmin();
+    } else if(Auth._cachedUser) {
+      onLogin();
+    } else {
+      // Session key exists but cache is empty — need to re-login
+      showPage('login');
+    }
   } else {
     showPage('login');
   }
