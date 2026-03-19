@@ -191,7 +191,39 @@ const Auth = {
     const s = (u && u.sessions) ? u.sessions : [];
     return limit ? s.slice(0, limit) : s;
   },
+// ── Save timer state ──────────────────────────────────────────
+async saveTimerState(elapsed) {
+  const key = this.currentKey();
+  if (!key) return;
+  try {
+    const today = new Date().toDateString();
+    await db.collection('timers').doc(key).set({
+      elapsed,
+      date: today,
+      ts:   Date.now()
+    });
+  } catch(e) {
+    console.error('saveTimerState error:', e);
+  }
+},
 
+async loadTimerState() {
+  const key = this.currentKey();
+  if (!key) return 0;
+  try {
+    const doc   = await db.collection('timers').doc(key).get();
+    if (!doc.exists) return 0;
+    const data  = doc.data();
+    const today = new Date().toDateString();
+    // Only use if it was saved today
+    if (data.date !== today) return 0;
+    return data.elapsed || 0;
+  } catch(e) {
+    console.error('loadTimerState error:', e);
+    return 0;
+  }
+},
+  
   resetData() {
     const key = this.currentKey();
     if (!key) return;
