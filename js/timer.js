@@ -56,17 +56,19 @@ const Timer = {
   },
 
   reset() {
-    this.stop();
-    this.elapsed    = 0;
-    this.paused     = false;
-    this._exStart   = null;
-    this._exElapsed = 0;
-    const el = document.getElementById('paused-overlay');
-    if (el) el.classList.remove('show');
-    this.render();
-    this._syncBtn();
-  },
-
+  this.stop();
+  this.paused     = false;
+  this._exStart   = null;
+  this._exElapsed = 0;
+  const el = document.getElementById('paused-overlay');
+  if (el) el.classList.remove('show');
+  // Load today's already-used seconds from auth
+  const used = Auth.getTodaySeconds();
+  this.elapsed = Math.min(used, MAX_SESSION);
+  this.render();
+  this._syncBtn();
+},
+  
   markExerciseStart() { this._exStart = Date.now(); this._exElapsed = 0; },
 
   exerciseDuration() {
