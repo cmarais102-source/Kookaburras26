@@ -1,12 +1,27 @@
-// ─── AUTH & STORAGE ───────────────────────────────────────────────
+// ─── FIREBASE CONFIG ──────────────────────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyB504Xb4PpFoiXnO7bA8iJ7eWS0fuu0Kvc",
+  authDomain:        "kookaburrasvt.firebaseapp.com",
+  projectId:         "kookaburrasvt",
+  storageBucket:     "kookaburrasvt.firebasestorage.app",
+  messagingSenderId: "369464801585",
+  appId:             "1:369464801585:web:b9e2e0c8530397d7e61810"
+};
+
+// Firebase is loaded via CDN scripts in index.html (compat version)
+firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.firestore();
+
 const ADMIN_USER = 'craig.marais19';
 
+// ─── AUTH ─────────────────────────────────────────────────────────
 const Auth = {
-  USERS_KEY:   'vt_users',
-  SESSION_KEY: 'vt_session',
+  SESSION_KEY:  'vt_session',
+  _cachedUser:  null,
 
-  getUsers()     { return JSON.parse(localStorage.getItem(this.USERS_KEY) || '{}'); },
-  saveUsers(u)   { localStorage.setItem(this.USERS_KEY, JSON.stringify(u)); },
+  currentKey()  { return sessionStorage.getItem(this.SESSION_KEY); },
+  currentUser() { return this._cachedUser || null; },
+  isAdmin()     { return this.currentKey() === ADMIN_USER.toLowerCase(); },
 
   _blank(username, password) {
     return {
@@ -30,102 +45,126 @@ const Auth = {
     };
   },
 
-
-  register(username, password) {
-    const users = this.getUsers();
-    const key   = username.toLowerCase().trim();
-    if (!key || key.length < 2)  return { ok: false, msg: 'Username must be at least 2 characters.' };
-    if (password.length < 4)     return { ok: false, msg: 'Password must be at least 4 characters.' };
-    if (users[key])               return { ok: false, msg: 'Username already taken.' };
-    users[key] = this._blank(username.trim(), password);
-    this.saveUsers(users);
-    this.login(username, password);
-    return { ok: true };
+  // ── Register ──────────────────────────────────────────────────
+  async register(username, password) {
+    const key = username.toLowerCase().trim();
+    if (!key || key.length < 2) return { ok:false, msg:'Username must be at least 2 characters.' };
+    if (password.length < 4)    return { ok:false, msg:'Password must be at least 4 characters.' };
+    try {
+      const doc = await db.collection('users').doc(key).get();
+      if (doc.exists) return { ok:false, msg:'Username already taken.' };
+      const userData = this._blank(username.trim(), password);
+      await db.collection('users').doc(key).set(userData);
+      sessionStorage.setItem(this.SESSION_KEY, key);
+      this._cachedUser = userData;
+      return { ok:true };
+    } catch(e) {
+      console.error('Register error:', e);
+      return { ok:false, msg:'Connection error. Please try again.' };
+    }
   },
 
-  login(username, password) {
-    const users = this.getUsers();
-    const key   = username.toLowerCase().trim();
-    const user  = users[key];
-    if (!user)                          return { ok: false, msg: 'User not found.' };
-    if (atob(user.password) !== password) return { ok: false, msg: 'Incorrect password.' };
-    // migrate old accounts
-    if (!user.levels)      user.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1, shape_counter:1 };
-    if (!user.consecutive) user.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0, shape_counter:0 };
-    this.saveUsers(users);
-    sessionStorage.setItem(this.SESSION_KEY, key);
-    return { ok: true };
+  // ── Login ─────────────────────────────────────────────────────
+  async login(username, password) {
+    const key = username.toLowerCase().trim();
+    try {
+      const doc = await db.collection('users').doc(key).get();
+      if (!doc.exists) return { ok:false, msg:'User not found.' };
+      const user = doc.data();
+      if (atob(user.password) !== password) return { ok:false, msg:'Incorrect password.' };
+
+      // Migrate old accounts
+      let needsUpdate = false;
+      if (!user.levels)      { user.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1, shape_counter:1 }; needsUpdate=true; }
+      if (!user.consecutive) { user.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0, shape_counter:0 }; needsUpdate=true; }
+      if (!user.levels.shape_counter)                   { user.levels.shape_counter=1;      needsUpdate=true; }
+      if (user.consecutive.shape_counter === undefined) { user.consecutive.shape_counter=0; needsUpdate=true; }
+      if (needsUpdate) await db.collection('users').doc(key).set(user);
+
+      sessionStorage.setItem(this.SESSION_KEY, key);
+      this._cachedUser = user;
+      return { ok:true };
+    } catch(e) {
+      console.error('Login error:', e);
+      return { ok:false, msg:'Connection error. Please try again.' };
+    }
   },
 
-  logout()       { sessionStorage.removeItem(this.SESSION_KEY); },
-  currentKey()   { return sessionStorage.getItem(this.SESSION_KEY); },
-  currentUser()  {
-    const key = this.currentKey();
-    return key ? (this.getUsers()[key] || null) : null;
+  // ── Logout ────────────────────────────────────────────────────
+  logout() {
+    sessionStorage.removeItem(this.SESSION_KEY);
+    this._cachedUser = null;
   },
-  isAdmin()      { return this.currentKey() === ADMIN_USER.toLowerCase(); },
 
-  // ── Save a completed round and check level progression ──────────
-  saveSession(data) {
+  // ── Save session & check level up ─────────────────────────────
+  async saveSession(data) {
     const key = this.currentKey();
     if (!key) return null;
-    const users = this.getUsers();
-    const u     = users[key];
-    if (!u) return null;
+    try {
+      const doc  = await db.collection('users').doc(key).get();
+      if (!doc.exists) return null;
+      const user = doc.data();
 
-    u.sessions.unshift(data);
-    if (u.sessions.length > 200) u.sessions.length = 200;
+      if (!user.sessions)  user.sessions = [];
+      user.sessions.unshift(data);
+      if (user.sessions.length > 200) user.sessions.length = 200;
 
-    // best score per exercise+level
-    const bk = `${data.exercise}_L${data.level}`;
-    if (!u.bests[bk] || data.score > u.bests[bk]) u.bests[bk] = data.score;
-    if (!u.bests[data.exercise] || data.score > u.bests[data.exercise]) u.bests[data.exercise] = data.score;
+      if (!user.bests) user.bests = {};
+      const bk = `${data.exercise}_L${data.level}`;
+      if (!user.bests[bk]            || data.score > user.bests[bk])            user.bests[bk]           = data.score;
+      if (!user.bests[data.exercise] || data.score > user.bests[data.exercise]) user.bests[data.exercise] = data.score;
 
-        // ── consecutive pass check ──
-    let levelUp = null;
-    const exId     = data.exercise;
-    const curLevel = u.levels[exId] || 1;
+      // Level up check
+      let levelUp    = null;
+      const exId     = data.exercise;
+      const curLevel = user.levels[exId] || 1;
 
-    if (data.passed) {
-      u.consecutive[exId] = (u.consecutive[exId] || 0) + 1;
-      if (u.consecutive[exId] >= 3 && curLevel < MAX_LEVEL) {
-        u.levels[exId]      = curLevel + 1;
-        u.consecutive[exId] = 0;
-        levelUp = { exercise: exId, newLevel: curLevel + 1 };
+      if (data.passed) {
+        user.consecutive[exId] = (user.consecutive[exId] || 0) + 1;
+        if (user.consecutive[exId] >= 3 && curLevel < MAX_LEVEL) {
+          user.levels[exId]      = curLevel + 1;
+          user.consecutive[exId] = 0;
+          levelUp = { exercise: exId, newLevel: curLevel + 1 };
+        }
+      } else {
+        user.consecutive[exId] = 0;
       }
-    } else {
-      u.consecutive[exId] = 0;
-    }
 
-    this.saveUsers(users);
-    return levelUp;
+      await db.collection('users').doc(key).set(user);
+      this._cachedUser = user;
+      return levelUp;
+    } catch(e) {
+      console.error('SaveSession error:', e);
+      return null;
+    }
   },
 
+  // ── Getters ───────────────────────────────────────────────────
   getUserLevel(exId) {
-    const u = this.currentUser();
+    const u = this._cachedUser;
     return (u && u.levels && u.levels[exId]) || 1;
   },
 
   getConsecutive(exId) {
-    const u = this.currentUser();
+    const u = this._cachedUser;
     return (u && u.consecutive && u.consecutive[exId]) || 0;
   },
 
   getMaxAccessible() {
-    const u = this.currentUser();
+    const u = this._cachedUser;
     if (!u) return STAGE_SIZE;
     return maxAccessibleLevel(u.levels);
   },
 
   getBest(exId, level) {
-    const u = this.currentUser();
+    const u = this._cachedUser;
     if (!u) return null;
     return level ? (u.bests[`${exId}_L${level}`] || null) : (u.bests[exId] || null);
   },
 
   getTodaySeconds() {
-    const u = this.currentUser();
-    if (!u) return 0;
+    const u = this._cachedUser;
+    if (!u || !u.sessions) return 0;
     const today = new Date().toDateString();
     return u.sessions
       .filter(s => new Date(s.ts).toDateString() === today)
@@ -133,12 +172,12 @@ const Auth = {
   },
 
   getStreakDays() {
-    const u = this.currentUser();
-    if (!u || !u.sessions.length) return 0;
-    const days  = [...new Set(u.sessions.map(s => new Date(s.ts).toDateString()))];
+    const u = this._cachedUser;
+    if (!u || !u.sessions || !u.sessions.length) return 0;
+    const days = [...new Set(u.sessions.map(s => new Date(s.ts).toDateString()))];
     let streak  = 0;
     const now   = new Date();
-    for (let i = 0; i < 365; i++) {
+    for (let i=0; i<365; i++) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       if (days.includes(d.toDateString())) streak++;
@@ -148,34 +187,40 @@ const Auth = {
   },
 
   getHistory(limit) {
-    const u = this.currentUser();
-    const s = u ? u.sessions : [];
+    const u = this._cachedUser;
+    const s = (u && u.sessions) ? u.sessions : [];
     return limit ? s.slice(0, limit) : s;
   },
 
   resetData() {
     const key = this.currentKey();
     if (!key) return;
-    const users = this.getUsers();
-    if (!users[key]) return;
-    const u = users[key];
-    u.sessions    = [];
-    u.bests       = {};
-    u.levels      = { peripheral_flash:1, arrow_reaction:1, number_scatter:1 };
-    u.consecutive = { peripheral_flash:0, arrow_reaction:0, number_scatter:0 };
-    this.saveUsers(users);
+    const fresh = {
+      ...this._cachedUser,
+      sessions:    [],
+      bests:       {},
+      levels:      { peripheral_flash:1, arrow_reaction:1, number_scatter:1, shape_counter:1 },
+      consecutive: { peripheral_flash:0, arrow_reaction:0, number_scatter:0, shape_counter:0 }
+    };
+    db.collection('users').doc(key).set(fresh);
+    this._cachedUser = fresh;
   },
 
-  // ── Admin helpers ────────────────────────────────────────────────
-  getAllUsers() {
-    const users = this.getUsers();
-    return Object.entries(users).map(([key, u]) => ({
-      key,
-      username:    u.username,
-      createdAt:   u.createdAt,
-      sessions:    u.sessions || [],
-      levels:      u.levels   || {},
-      consecutive: u.consecutive || {}
-    }));
+  // ── Admin ─────────────────────────────────────────────────────
+  async getAllUsers() {
+    try {
+      const snap = await db.collection('users').get();
+      return snap.docs.map(doc => ({
+        key:         doc.id,
+        username:    doc.data().username,
+        createdAt:   doc.data().createdAt,
+        sessions:    doc.data().sessions    || [],
+        levels:      doc.data().levels      || {},
+        consecutive: doc.data().consecutive || {}
+      }));
+    } catch(e) {
+      console.error('getAllUsers error:', e);
+      return [];
+    }
   }
 };
