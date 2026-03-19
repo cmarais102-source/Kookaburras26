@@ -199,6 +199,7 @@ function _launchGame(exId, arena, cfg) {
     case 'peripheral_flash': currentGame=GamePeripheralFlash; break;
     case 'arrow_reaction':   currentGame=GameArrowReaction;   break;
     case 'number_scatter':   currentGame=GameNumberScatter;   break;
+    case 'shape_counter' :  currentGame=GameShapeCounter; break;
   }
   if(currentGame) currentGame.init(arena,cfg);
 }
@@ -275,7 +276,7 @@ function renderDashboard() {
 // ─── PROGRESS PAGE ────────────────────────────────────────────────
 let progressFilter='peripheral_flash';
 function renderProgress() {
-  const exIds=['peripheral_flash','arrow_reaction','number_scatter'];
+  const exIds=['peripheral_flash','arrow_reaction','number_scatter','shape_counter'];
   document.getElementById('progress-filter').innerHTML=exIds.map(id=>{
     const ex=EXERCISES.find(e=>e.id===id);
     return `<button class="ex-filter-btn${progressFilter===id?' active':''}" onclick="setProgressFilter('${id}')">${ex.icon} ${ex.name}</button>`;
@@ -372,7 +373,7 @@ function renderSettings(){
   document.getElementById('set-username').textContent=u.username;
   document.getElementById('set-sessions').textContent=u.sessions.length;
   document.getElementById('set-since').textContent=new Date(u.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  const exIds=['peripheral_flash','arrow_reaction','number_scatter'];
+  const exIds=['peripheral_flash','arrow_reaction','number_scatter','shape_counter'];
   document.getElementById('set-levels').innerHTML=exIds.map(id=>{
     const ex=EXERCISES.find(e=>e.id===id);
     const lvl=Auth.getUserLevel(id);
