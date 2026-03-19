@@ -456,10 +456,11 @@ function setupAuth(){
   });
 }
 
-function onLogin(){
+async function onLogin(){
   const user=Auth.currentUser();
   document.getElementById('nav-username').textContent=user.username;
-  showPage('dashboard'); renderDashboard(); Timer.reset();
+  showPage('dashboard'); renderDashboard();
+  await Timer.reset();
 }
 
 function setupNav(){
