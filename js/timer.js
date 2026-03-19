@@ -15,10 +15,13 @@ const Timer = {
     this.paused   = false;
     this._exStart = this._exStart || Date.now();
     this._interval = setInterval(() => {
-      this.elapsed++;
-      this.render();
-      if (this.elapsed >= MAX_SESSION) { this.stop(); showSessionOver(); }
-    }, 1000);
+  this.elapsed++;
+  this.render();
+  // Save to Firebase every 10 seconds
+  if (this.elapsed % 10 === 0) Auth.saveTimerState(this.elapsed);
+  if (this.elapsed >= MAX_SESSION) { this.stop(); showSessionOver(); }
+}, 1000);
+
     this._syncBtn();
   },
 
@@ -55,16 +58,18 @@ const Timer = {
     this._syncBtn();
   },
 
-  reset() {
+ async reset() {
   this.stop();
   this.paused     = false;
   this._exStart   = null;
   this._exElapsed = 0;
   const el = document.getElementById('paused-overlay');
   if (el) el.classList.remove('show');
-  // Load today's already-used seconds from auth
-  const used = Auth.getTodaySeconds();
-  this.elapsed = Math.min(used, MAX_SESSION);
+  // Load saved timer state from Firebase
+  const saved = await Auth.loadTimerState();
+  // Also check completed sessions in case timer state is behind
+  const fromSessions = Auth.getTodaySeconds();
+  this.elapsed = Math.min(Math.max(saved, fromSessions), MAX_SESSION);
   this.render();
   this._syncBtn();
 },
